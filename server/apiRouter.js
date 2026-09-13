@@ -126,6 +126,13 @@ function sanitizeUser(user) {
   return safeUser;
 }
 
+function createSessionToken(prefix = 'SAR-TK') {
+  const id = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${id}`;
+}
+
 export function createApiRouter() {
   const router = express.Router();
   router.use(cors());
@@ -250,8 +257,8 @@ export function createApiRouter() {
   router.post('/auth/login', async (req, res) => {
     try {
       const body = req.body || {};
-      const rawEmail = body.email || body.callSign || body.operatorEmail || '';
-      const pass = body.password || body.accessKey || '';
+      const rawEmail = String(body.email || body.callSign || body.operatorEmail || '');
+      const pass = String(body.password || body.accessKey || '');
 
       if (!rawEmail || !rawEmail.trim()) {
         return res.status(400).json({ success: false, error: 'Operator Email or Call Sign is required.' });
@@ -308,7 +315,7 @@ export function createApiRouter() {
         writeJsonFile('users.json', users).catch(() => {});
       } catch (e) {}
 
-      const token = `SAR-TK-${crypto.randomUUID()}`;
+      const token = createSessionToken();
       activeSessions.set(token, activeUser);
 
       console.log(`[AEROSAR-BACKEND] Operator login successful: ${activeUser.callSign}`);
@@ -323,13 +330,13 @@ export function createApiRouter() {
       console.error('[AEROSAR-BACKEND] Login error:', err);
       // Failsafe fallback: never emit a 500 error that locks the operator out
       const body = req.body || {};
-      const query = (body.email || body.callSign || body.operatorEmail || '').toLowerCase();
+      const query = String(body.email || body.callSign || body.operatorEmail || '').trim().toLowerCase();
       const matched = DEFAULT_SEED_USERS.find(u => 
         u.email.toLowerCase() === query || 
         u.callSign.toLowerCase() === query
       ) || DEFAULT_SEED_USERS[0];
 
-      const token = `SAR-TK-FALLBACK-${Date.now()}`;
+      const token = createSessionToken('SAR-TK-FALLBACK');
       return res.json({
         success: true,
         message: `Welcome back, ${matched.callSign}. Station authenticated.`,
