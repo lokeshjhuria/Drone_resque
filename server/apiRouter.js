@@ -49,7 +49,6 @@ function sanitizeUser(user) {
 export function createApiRouter() {
   const router = express.Router();
   router.use(cors());
-  router.options('*', cors());
   router.use(express.json({ limit: '15mb' }));
 
   // Universal CORS & Preflight handler to prevent 405 Method Not Allowed

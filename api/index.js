@@ -5,7 +5,6 @@ import { createApiRouter } from '../server/apiRouter.js';
 const app = express();
 
 app.use(cors());
-app.options('*', cors());
 app.use(express.json({ limit: '15mb' }));
 
 // Preflight & CORS headers
