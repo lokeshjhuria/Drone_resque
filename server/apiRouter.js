@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -47,7 +48,28 @@ function sanitizeUser(user) {
 
 export function createApiRouter() {
   const router = express.Router();
+  router.use(cors());
+  router.options('*', cors());
   router.use(express.json({ limit: '15mb' }));
+
+  // Universal CORS & Preflight handler to prevent 405 Method Not Allowed
+  router.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
+  // GET fallbacks so GET requests never return 405
+  router.get('/auth/login', (req, res) => {
+    res.json({ status: 'ACTIVE', message: 'AeroSAR Auth Service. Use POST to authenticate.' });
+  });
+  router.get('/auth/register', (req, res) => {
+    res.json({ status: 'ACTIVE', message: 'AeroSAR Registration Service. Use POST to register.' });
+  });
 
   // ==========================================
   // AUTHENTICATION & OPERATOR MANAGEMENT

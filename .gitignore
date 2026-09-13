@@ -22,6 +22,9 @@ pnpm-debug.log*
 lerna-debug.log*
 *.log
 
+# Nested clone
+Drone_resque/
+
 # Editor and IDE
 .vscode/*
 !.vscode/extensions.json
