@@ -1,0 +1,30 @@
+[
+  {
+    "id": "MSN-2026-081",
+    "title": "Sector Bravo Flood Inundation & Survivor Evac",
+    "category": "WATERBORNE SAR",
+    "priority": "CRITICAL",
+    "stage": 2,
+    "status": "ACTIVE_SURVEILLANCE",
+    "targetCoordinates": { "lat": 34.0537, "lng": -118.2427 },
+    "assignedUnit": "AERO-FALCON-01 [Dual Optical 4K + FLIR Boson]",
+    "assignedOperator": "COMMANDER-VANCE",
+    "survivorsLocated": 2,
+    "startTime": "2026-09-13T19:25:00.000Z",
+    "notes": "Torrential flash flood alert. Active survivor spotted signaling on rooftop."
+  },
+  {
+    "id": "MSN-2026-082",
+    "title": "Angeles Ridge Wildfire Thermal Canopy Sweep",
+    "category": "THERMAL RECON",
+    "priority": "HIGH",
+    "stage": 3,
+    "status": "CONTAINMENT_SCAN",
+    "targetCoordinates": { "lat": 34.1122, "lng": -118.1534 },
+    "assignedUnit": "VALKYRIE-NIGHTSTALKER-04 [FLIR Boson LWIR]",
+    "assignedOperator": "CHEN-THERMAL-SPEC",
+    "survivorsLocated": 1,
+    "startTime": "2026-09-13T18:40:00.000Z",
+    "notes": "FLIR Boson radiometric lock established on heat corridor."
+  }
+]

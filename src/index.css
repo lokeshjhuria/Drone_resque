@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  color-scheme: light;
+}
+
+.font-chakra {
+  font-family: 'Chakra Petch', sans-serif;
+}
+
+.font-mono-code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom Tactical Scrollbar for Light Theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #16a34a;
+}
+
+/* Glassmorphism & Cyber Card Effects with Crisp Light Theme */
+.hud-card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(22, 163, 74, 0.3);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(22, 163, 74, 0.06);
+}
+
+.hud-card-alert {
+  background: rgba(254, 242, 242, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  box-shadow: 0 4px 15px rgba(220, 38, 38, 0.15);
+}
+
+.hud-glow-green {
+  text-shadow: 0 0 10px rgba(22, 163, 74, 0.3);
+}
+
+.hud-glow-red {
+  text-shadow: 0 0 10px rgba(220, 38, 38, 0.4);
+}
+
+/* Scanline Overlay Effect in subtle light mode */
+.scanlines-overlay {
+  background: linear-gradient(
+    rgba(255, 255, 255, 0) 50%, 
+    rgba(0, 0, 0, 0.04) 50%
+  );
+  background-size: 100% 3px;
+  pointer-events: none;
+}
+
+/* Radar pulse animation */
+@keyframes ping-slow {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  80%, 100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.animate-ping-slow {
+  animation: ping-slow 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Reticle Corner Brackets in Light Tactical Army Green */
+.corner-bracket-tl {
+  border-top: 2px solid #41522b;
+  border-left: 2px solid #41522b;
+}
+
+.corner-bracket-tr {
+  border-top: 2px solid #41522b;
+  border-right: 2px solid #41522b;
+}
+
+.corner-bracket-bl {
+  border-bottom: 2px solid #41522b;
+  border-left: 2px solid #41522b;
+}
+
+.corner-bracket-br {
+  border-bottom: 2px solid #41522b;
+  border-right: 2px solid #41522b;
+}
+
+/* Leaflet Map Tooltips for Light Mode */
+.tactical-tooltip {
+  background-color: #ffffff !important;
+  border: 1px solid #16a34a !important;
+  color: #15803d !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  font-weight: bold !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
+  border-radius: 4px !important;
+}
+
+.leaflet-container {
+  font-family: 'JetBrains Mono', monospace !important;
+  background-color: #f8fafc !important;
+}

@@ -1,0 +1,36 @@
+[
+  {
+    "id": "RECON-CAP-1789314771836",
+    "timestamp": "2026-09-13T15:52:51.836Z",
+    "areaName": "Grizzly Ridge Outpost",
+    "lat": 34.12,
+    "lng": -118.19,
+    "altitude": 52,
+    "heading": 110,
+    "droneModel": "VALKYRIE-NIGHTSTALKER-04 [FLIR Boson LWIR]",
+    "callSign": "TALON-4",
+    "imageUrl": null,
+    "environmental": {},
+    "targetsVisible": 1
+  },
+  {
+    "id": "RECON-INIT-001",
+    "timestamp": "2026-09-13T19:28:10.000Z",
+    "areaName": "Downtown River Sector (LA River Basin)",
+    "lat": 34.0537,
+    "lng": -118.2427,
+    "zoom": 16,
+    "altitude": 46.2,
+    "heading": 42,
+    "droneModel": "AERO-FALCON-01 [Dual Optical 4K + FLIR Boson]",
+    "callSign": "COMMANDER-VANCE",
+    "notes": "Direct live aerial visual reconnaissance with survivor thermal pinpoint.",
+    "targetsVisible": 2,
+    "environmental": {
+      "ambientTemp": 23.8,
+      "humidity": 46,
+      "aqi": 24,
+      "airQualityStatus": "CLEAN / SAFE"
+    }
+  }
+]
