@@ -127,6 +127,18 @@ const TopNavbar = ({ onOpenReportModal, onOpenDroneModal, onOpenSOSModal, onOpen
           </span>
         </button>
 
+        {/* SUPABASE CLOUD DATABASE BUTTON */}
+        <button
+          onClick={onOpenSupabaseModal}
+          title="Supabase Cloud Database Sync (Project: hwhozwfaazlaqriiewko)"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold transition-all shadow-sm"
+        >
+          <Database className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="hidden sm:inline text-[11px] font-chakra tracking-wide">
+            SUPABASE
+          </span>
+        </button>
+
         {/* SYSTEM SCHEMATIC BUTTON */}
         <button
           onClick={onOpenDiagramModal}
