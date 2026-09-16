@@ -237,32 +237,120 @@ const TacticalMap = ({ onOpenVaultModal }) => {
   useEffect(() => {
     if (!mapInstanceRef.current || !activeSearchArea) return;
     const map = mapInstanceRef.current;
-    const { lat, lng, zoom } = activeSearchArea;
+    const { lat, lng, zoom, bbox, name } = activeSearchArea;
 
-    map.flyTo([lat, lng], zoom || 16, { duration: 1.2 });
+    // 1. Fit to Bounding Box or Fly To
+    if (bbox && Array.isArray(bbox) && bbox.length === 4) {
+      const southWest = [parseFloat(bbox[0]), parseFloat(bbox[2])];
+      const northEast = [parseFloat(bbox[1]), parseFloat(bbox[3])];
+      map.fitBounds([southWest, northEast], {
+        padding: [35, 35],
+        maxZoom: 16,
+        animate: true,
+        duration: 1.2
+      });
+    } else {
+      map.flyTo([lat, lng], zoom || 15, { duration: 1.2 });
+    }
 
-    // Update search rectangle
+    // 2. Update Search Rectangle Grid with exact area coverage
     if (searchRectangleRef.current) {
-      searchRectangleRef.current.setBounds([
-        [lat - 0.006, lng - 0.007],
-        [lat + 0.006, lng + 0.007]
-      ]);
+      if (bbox && Array.isArray(bbox) && bbox.length === 4) {
+        searchRectangleRef.current.setBounds([
+          [parseFloat(bbox[0]), parseFloat(bbox[2])],
+          [parseFloat(bbox[1]), parseFloat(bbox[3])]
+        ]);
+      } else {
+        const delta = zoom ? (0.05 / Math.pow(2, Math.max(1, zoom - 10))) : 0.008;
+        searchRectangleRef.current.setBounds([
+          [lat - delta, lng - delta * 1.2],
+          [lat + delta, lng + delta * 1.2]
+        ]);
+      }
+
+      searchRectangleRef.current.unbindTooltip();
+      searchRectangleRef.current.bindTooltip(
+        `📍 ACTIVE SEARCH SECTOR: ${name.toUpperCase()} [SAR GRID]`,
+        { permanent: true, direction: 'top', className: 'tactical-tooltip' }
+      );
     }
 
-    // Update emergency markers relative to new search area
-    if (baseCampMarkerRef.current) {
-      baseCampMarkerRef.current.setLatLng([lat - 0.004, lng - 0.004]);
-    }
-    if (hospitalMarkerRef.current) {
-      hospitalMarkerRef.current.setLatLng([lat + 0.004, lng + 0.005]);
-    }
-    if (bloodBankMarkerRef.current) {
-      bloodBankMarkerRef.current.setLatLng([lat - 0.004, lng + 0.005]);
+    // 3. Create or Update High-Visibility Searched Area Tactical Pin
+    const pinHtml = `
+      <div style="position:relative; display:flex; flex-direction:column; align-items:center; cursor:pointer;">
+        <div style="position:absolute; width:44px; height:44px; top:-4px; border-radius:50%; background:#10b981; opacity:0.35; animation:ping 1.8s cubic-bezier(0,0,0.2,1) infinite;"></div>
+        <div style="background:#059669; color:#ffffff; padding:5px 12px; font-weight:bold; font-size:11px; font-family:monospace; border-radius:8px; border:2px solid #ffffff; box-shadow:0 4px 14px rgba(0,0,0,0.35); display:flex; align-items:center; gap:6px; white-space:nowrap; z-index:10;">
+          <span style="font-size:13px;">🎯</span>
+          <span>${name.toUpperCase().slice(0, 26)}</span>
+        </div>
+        <div style="width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:8px solid #059669; z-index:10;"></div>
+      </div>
+    `;
+
+    const pinIcon = L.divIcon({
+      className: 'searched-area-custom-pin',
+      html: pinHtml,
+      iconSize: [220, 40],
+      iconAnchor: [110, 40]
+    });
+
+    if (searchedAreaMarkerRef.current) {
+      searchedAreaMarkerRef.current.setLatLng([lat, lng]);
+      searchedAreaMarkerRef.current.setIcon(pinIcon);
+    } else {
+      searchedAreaMarkerRef.current = L.marker([lat, lng], {
+        icon: pinIcon,
+        zIndexOffset: 1200
+      }).addTo(map);
     }
 
+    const popupContent = `
+      <div style="font-family:monospace; font-size:11px; color:#0f172a; min-width:180px;">
+        <div style="font-weight:bold; color:#059669; font-size:12px; border-bottom:1px solid #cbd5e1; padding-bottom:4px; margin-bottom:6px;">
+          🎯 SEARCHED SECTOR VERIFIED
+        </div>
+        <div><b>Target Area:</b> ${name}</div>
+        <div><b>Coordinates:</b> ${formatTacticalCoordinates(lat, lng)}</div>
+        <div style="margin-top:4px; color:#16a34a; font-weight:bold;">SATELLITE & DRONE OVERWATCH ACTIVE</div>
+      </div>
+    `;
+    searchedAreaMarkerRef.current.bindPopup(popupContent).openPopup();
+
+    // 4. Update Drone Position & Flight Path
     if (droneMarkerRef.current) {
       droneMarkerRef.current.setLatLng([lat, lng]);
     }
+
+    const localFlightPath = [
+      [lat - 0.003, lng - 0.003],
+      [lat - 0.002, lng - 0.001],
+      [lat - 0.001, lng - 0.0015],
+      [lat, lng]
+    ];
+    if (flightPathLineRef.current) {
+      flightPathLineRef.current.setLatLngs(localFlightPath);
+    }
+
+    // 5. Update Base Camp, Hospital, and Blood Bank markers relative to new search area
+    const offset = (zoom && zoom < 13) ? 0.015 : 0.004;
+    if (baseCampMarkerRef.current) {
+      baseCampMarkerRef.current.setLatLng([lat - offset, lng - offset]);
+    }
+    if (hospitalMarkerRef.current) {
+      hospitalMarkerRef.current.setLatLng([lat + offset, lng + offset * 1.2]);
+    }
+    if (bloodBankMarkerRef.current) {
+      bloodBankMarkerRef.current.setLatLng([lat - offset, lng + offset * 1.2]);
+    }
+
+    // 6. Invalidate Map Size across multiple frames to eliminate grey tiles
+    [100, 300, 700, 1200].forEach(ms => {
+      setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, ms);
+    });
   }, [activeSearchArea]);
 
   // Switch Tile Layer when layer button is toggled
@@ -394,47 +482,47 @@ const TacticalMap = ({ onOpenVaultModal }) => {
     }
   };
 
-  // Perform area geocode search using OpenStreetMap Nominatim
+  // Search area execution: instant resolution on submit
   const handlePerformSearch = async (e) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const query = searchQuery.trim();
+    if (!query) return;
 
     setIsSearching(true);
     setShowDropdown(true);
 
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          searchQuery
-        )}&limit=5`,
-        {
-          headers: {
-            'User-Agent': 'AerosarDroneSARApp/1.0',
-          },
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setSearchResults(data);
+      const results = await resolveSearchArea(query);
+      setSearchResults(results);
+
+      // Auto-select and fly directly to #1 match immediately upon submission
+      if (results && results.length > 0) {
+        handleSelectLocation(results[0]);
       } else {
-        setSearchResults([]);
+        // Fallback: check if raw coordinate was entered
+        const coords = parseGpsCoordinates(query);
+        if (coords) {
+          handleSelectLocation(coords);
+        }
       }
     } catch (err) {
-      console.warn('Geocoding network error, relying on presets:', err);
-      // Filter disaster presets that match query
-      const matchingPresets = DISASTER_SEARCH_PRESETS.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.region.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setSearchResults(matchingPresets.map(p => ({
-        display_name: `${p.name} (${p.region})`,
-        lat: p.lat,
-        lon: p.lng,
-        isPreset: true,
-        presetData: p
-      })));
+      console.warn('Geocoding search error:', err);
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  // Instant typing suggestions
+  const handleSearchInputChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    if (val.trim().length >= 2) {
+      const localMatches = searchLocalLocations(val);
+      setSearchResults(localMatches);
+      setShowDropdown(true);
+    } else if (val.trim().length === 0) {
+      setSearchResults([]);
+      setShowDropdown(false);
     }
   };
 
@@ -442,16 +530,16 @@ const TacticalMap = ({ onOpenVaultModal }) => {
   const handleSelectLocation = (loc) => {
     const lat = parseFloat(loc.lat);
     const lng = parseFloat(loc.lon || loc.lng);
-    const name = loc.display_name?.split(',')[0] || loc.name || 'Target Search Area';
+    const name = loc.name || loc.display_name?.split(',')[0] || 'Target Search Area';
 
-    searchAndFlyTo(name, lat, lng, 16);
+    searchAndFlyTo(name, lat, lng, loc.zoom || 15, loc.type || 'LOCATION', loc.bbox || null);
     setSearchQuery(name);
     setShowDropdown(false);
   };
 
   // Select a predefined disaster hotspot preset
   const handleSelectPreset = (preset) => {
-    searchAndFlyTo(preset.name, preset.lat, preset.lng, preset.zoom || 16, preset.category);
+    searchAndFlyTo(preset.name, preset.lat, preset.lng, preset.zoom || 15, preset.category, preset.bbox || null);
     setSearchQuery(preset.name);
     setShowDropdown(false);
   };
@@ -582,7 +670,7 @@ const TacticalMap = ({ onOpenVaultModal }) => {
         </div>
       </div>
 
-      {/* 2. SEARCH AREA BAR WITH DISASTER PRESETS & NOMINATIM GEOCODING */}
+      {/* 2. SEARCH AREA BAR WITH DISASTER PRESETS & HIGH-PRECISION GEOCODING */}
       <div className="bg-slate-50 border-b border-slate-200 px-3.5 py-2 relative z-20">
         <form onSubmit={handlePerformSearch} className="flex items-center gap-2">
           
@@ -591,15 +679,17 @@ const TacticalMap = ({ onOpenVaultModal }) => {
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setShowDropdown(true)}
-              placeholder="Search area (e.g. Houston Floods, Sierra Ridge, Mount Shasta, Paris, Tokyo)..."
+              onChange={handleSearchInputChange}
+              onFocus={() => {
+                if (searchQuery.trim().length >= 1) setShowDropdown(true);
+              }}
+              placeholder="Search any city, area, or GPS coordinates (e.g. Jaipur, Delhi, Mumbai, Tokyo, London, or 28.6139, 77.2090)..."
               className="w-full pl-9 pr-8 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-mono-code text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 shadow-inner"
             />
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                onClick={() => { setSearchQuery(''); setSearchResults([]); setShowDropdown(false); }}
                 className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-3.5 h-3.5" />
@@ -621,7 +711,7 @@ const TacticalMap = ({ onOpenVaultModal }) => {
         {/* Quick Disaster Hotspot Chips */}
         <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 text-[10px] font-mono-code">
           <span className="text-slate-500 font-bold whitespace-nowrap">QUICK ZONES:</span>
-          {DISASTER_SEARCH_PRESETS.slice(0, 5).map((preset) => (
+          {DISASTER_SEARCH_PRESETS.slice(0, 6).map((preset) => (
             <button
               key={preset.id}
               type="button"
@@ -638,14 +728,14 @@ const TacticalMap = ({ onOpenVaultModal }) => {
         </div>
 
         {/* Autocomplete / Geocoding Results Dropdown */}
-        {showDropdown && (searchResults.length > 0 || searchQuery.length > 0) && (
+        {showDropdown && (searchResults.length > 0 || isSearching) && (
           <div className="absolute top-full left-3.5 right-3.5 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 divide-y divide-slate-100 max-h-64 overflow-y-auto z-30 font-mono-code text-xs">
             <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 flex items-center justify-between">
-              <span>SEARCH RESULTS</span>
+              <span>SEARCH RESULTS ({searchResults.length})</span>
               <button 
                 type="button" 
                 onClick={() => setShowDropdown(false)} 
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 text-[11px]"
               >
                 Close
               </button>
@@ -661,13 +751,13 @@ const TacticalMap = ({ onOpenVaultModal }) => {
                 <MapPin className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0 group-hover:scale-110 transition-transform" />
                 <div className="flex-1 min-w-0">
                   <div className="font-bold truncate text-slate-900">
-                    {result.display_name?.split(',')[0]}
+                    {result.name || result.display_name?.split(',')[0]}
                   </div>
                   <div className="text-[10px] text-slate-500 truncate">
                     {result.display_name}
                   </div>
                   <div className="text-[9px] text-emerald-700 font-semibold mt-0.5">
-                    LAT: {parseFloat(result.lat).toFixed(4)} | LON: {parseFloat(result.lon || result.lng).toFixed(4)}
+                    COORDINATES: {formatTacticalCoordinates(parseFloat(result.lat), parseFloat(result.lon || result.lng))}
                   </div>
                 </div>
               </button>
@@ -675,7 +765,7 @@ const TacticalMap = ({ onOpenVaultModal }) => {
 
             {searchResults.length === 0 && !isSearching && (
               <div className="px-3 py-3 text-center text-slate-500 text-xs">
-                No matching places found. Try typing a city or select a preset zone above.
+                No matching places found. Try typing a city, state, or GPS coordinates (e.g. 28.6139, 77.2090).
               </div>
             )}
           </div>
@@ -697,8 +787,11 @@ const TacticalMap = ({ onOpenVaultModal }) => {
             SECTOR: <span className="text-slate-900 font-bold">{activeSearchArea.name}</span>
           </span>
           <span className="hidden sm:inline text-slate-400">•</span>
-          <span className="text-slate-600">
-            ({telemetry.lat.toFixed(4)}°N, {Math.abs(telemetry.lng).toFixed(4)}°W)
+          <span className="text-slate-700 font-bold">
+            {formatTacticalCoordinates(telemetry.lat, telemetry.lng)}
+          </span>
+          <span className="hidden lg:inline text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">
+            RADAR LOCK
           </span>
         </div>
 
@@ -708,9 +801,9 @@ const TacticalMap = ({ onOpenVaultModal }) => {
           </span>
           <button
             onClick={handleCaptureLiveArea}
-            className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold border border-emerald-300 transition-colors flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-bold border border-emerald-300 transition-colors flex items-center gap-1 shadow-xs"
           >
-            <Camera className="w-3 h-3" />
+            <Camera className="w-3.5 h-3.5" />
             <span>SNAPSHOT LIVE AREA</span>
           </button>
         </div>

@@ -10,11 +10,13 @@ import {
   Camera, 
   Navigation,
   CheckCircle2,
-  Cpu
+  Cpu,
+  Target
 } from 'lucide-react';
+import { formatTacticalCoordinates } from '../../utils/geocoding';
 
 const TelemetryBar = () => {
-  const { telemetry, setFlightDirective, droneConnection } = useDrone();
+  const { telemetry, setFlightDirective, droneConnection, activeSearchArea } = useDrone();
 
   const getBatteryColor = (level) => {
     if (level > 50) return 'text-green-800 border-green-300 bg-green-50';
@@ -63,11 +65,18 @@ const TelemetryBar = () => {
           <span className="text-[10px] text-green-700 font-bold">{getCompassHeadingName(telemetry.heading)}</span>
         </div>
 
-        {/* GPS Coordinates */}
-        <div className="hidden md:flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border border-slate-200 text-slate-700">
-          <MapPin className="w-3.5 h-3.5 text-green-700" />
-          <span className="text-slate-500 text-[10px]">GPS:</span>
-          <span className="text-slate-800 font-semibold">{telemetry.lat.toFixed(4)}°N, {Math.abs(telemetry.lng).toFixed(4)}°W</span>
+        {/* GPS Coordinates & Active Sector */}
+        <div className="hidden md:flex items-center gap-2 bg-white px-2.5 py-1 rounded-md border border-slate-200 text-slate-700">
+          <div className="flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5 text-green-700" />
+            <span className="text-slate-500 text-[10px]">GPS:</span>
+            <span className="text-slate-800 font-semibold">{formatTacticalCoordinates(telemetry.lat, telemetry.lng)}</span>
+          </div>
+          {activeSearchArea?.name && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold truncate max-w-[160px]" title={activeSearchArea.name}>
+              {activeSearchArea.name.split(',')[0]}
+            </span>
+          )}
           <span className="text-[9px] px-1.5 py-0.2 rounded bg-green-100 text-green-800 border border-green-300 font-bold">
             RTK FIX
           </span>
