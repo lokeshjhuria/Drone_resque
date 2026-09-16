@@ -23,9 +23,17 @@ import {
   Sparkles,
   Loader2,
   X,
-  FolderDown
+  FolderDown,
+  Target,
+  Navigation
 } from 'lucide-react';
 import { DISASTER_SEARCH_PRESETS } from '../../utils/areaCapture';
+import { 
+  resolveSearchArea, 
+  searchLocalLocations, 
+  parseGpsCoordinates, 
+  formatTacticalCoordinates 
+} from '../../utils/geocoding';
 
 const TacticalMap = ({ onOpenVaultModal }) => {
   const mapContainerRef = useRef(null);
@@ -33,6 +41,7 @@ const TacticalMap = ({ onOpenVaultModal }) => {
   const tileLayerGroupRef = useRef(null);
   const droneMarkerRef = useRef(null);
   const searchRectangleRef = useRef(null);
+  const searchedAreaMarkerRef = useRef(null);
   const baseCampMarkerRef = useRef(null);
   const hospitalMarkerRef = useRef(null);
   const bloodBankMarkerRef = useRef(null);
