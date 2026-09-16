@@ -14,6 +14,7 @@ import RescueWorkflowBar from './RescueWorkflowBar';
 import SensorSuitePanel from './SensorSuitePanel';
 import SystemArchitectureModal from './SystemArchitectureModal';
 import ReconVaultModal from './ReconVaultModal';
+import { SupabaseConnectModal } from './SupabaseConnectModal';
 
 const Dashboard = () => {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -21,6 +22,7 @@ const Dashboard = () => {
   const [isSOSModalOpen, setIsSOSModalOpen] = useState(false);
   const [isDiagramModalOpen, setIsDiagramModalOpen] = useState(false);
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   const { triggerEmergencySOS } = useDrone();
 
@@ -38,6 +40,7 @@ const Dashboard = () => {
         onOpenSOSModal={handleOpenSOS}
         onOpenDiagramModal={() => setIsDiagramModalOpen(true)}
         onOpenVaultModal={() => setIsVaultModalOpen(true)}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
       />
 
       {/* Flight Telemetry Status Strip */}
@@ -112,6 +115,12 @@ const Dashboard = () => {
       <DroneConnectionModal
         isOpen={isDroneModalOpen}
         onClose={() => setIsDroneModalOpen(false)}
+      />
+
+      {/* Supabase Cloud Sync Modal */}
+      <SupabaseConnectModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
       />
     </div>
   );
