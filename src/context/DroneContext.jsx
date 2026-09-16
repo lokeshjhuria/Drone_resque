@@ -312,9 +312,9 @@ export const DroneProvider = ({ children }) => {
   };
 
   // SEARCH AREA & RELOCATE DRONE
-  const searchAndFlyTo = (areaName, lat, lng, zoom = 16, category = 'CUSTOM') => {
+  const searchAndFlyTo = (areaName, lat, lng, zoom = 15, category = 'CUSTOM', bbox = null) => {
     soundFX.playClick();
-    setActiveSearchArea({ name: areaName, lat, lng, zoom, category });
+    setActiveSearchArea({ name: areaName, lat, lng, zoom, category, bbox });
 
     setTelemetry(prev => ({
       ...prev,
@@ -345,7 +345,10 @@ export const DroneProvider = ({ children }) => {
 
     setDetections(prev => [newSurvivor, ...prev.slice(0, 2)]);
     setActiveTargetId(newTargetId);
-    addLog('ALERT', `SEARCH SECTOR ACQUIRED: Drone deployed to ${areaName} (${lat.toFixed(4)}N, ${lng.toFixed(4)}W). Commencing aerial surveillance.`);
+    
+    const latStr = `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? 'N' : 'S'}`;
+    const lngStr = `${Math.abs(lng).toFixed(4)}°${lng >= 0 ? 'E' : 'W'}`;
+    addLog('ALERT', `SEARCH SECTOR ACQUIRED: Drone deployed to ${areaName} (${latStr}, ${lngStr}). Commencing aerial surveillance.`);
   };
 
   // CAPTURE LIVE AERIAL RECON INTEL SNAPSHOT
