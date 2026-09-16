@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { getServerSupabase, isServerSupabaseReady, SUPABASE_PROJECT_REF, SUPABASE_URL } from './supabaseClient.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,7 +83,7 @@ try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 } catch (e) {
-  console.warn('[AEROSAR-STORAGE] Note: Operating in serverless/virtual environment:', e.message);
+  console.warn('[AEROSAR-STORAGE] Operating in serverless/virtual environment:', e.message);
 }
 
 // Resilient File I/O Helpers that never crash on Windows locks or serverless read-only disks
@@ -108,10 +109,7 @@ async function readJsonFile(filename, fallback = []) {
 }
 
 async function writeJsonFile(filename, data) {
-  // Always update in-memory cache first so operations succeed immediately
   memoryCache.set(filename, data);
-
-  // Safely write to disk without throwing if file is locked or read-only
   try {
     const filePath = path.join(DATA_DIR, filename);
     await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
@@ -149,6 +147,41 @@ export function createApiRouter() {
     next();
   });
 
+  // ==========================================
+  // SUPABASE PROJECT DIAGNOSTICS & STATUS
+  // ==========================================
+  router.get('/supabase/status', async (req, res) => {
+    const isReady = isServerSupabaseReady();
+    let tableCheck = { operators: false, missions: false, recon: false };
+
+    if (isReady) {
+      try {
+        const supabase = getServerSupabase();
+        const { error: opErr } = await supabase.from('operators').select('id').limit(1);
+        const { error: msnErr } = await supabase.from('missions').select('id').limit(1);
+        const { error: rcnErr } = await supabase.from('recon_vault').select('id').limit(1);
+
+        tableCheck = {
+          operators: !opErr,
+          missions: !msnErr,
+          recon: !rcnErr,
+        };
+      } catch (err) {
+        console.warn('[Supabase Status Check]:', err.message);
+      }
+    }
+
+    return res.json({
+      projectRef: SUPABASE_PROJECT_REF,
+      supabaseUrl: SUPABASE_URL,
+      dashboardUrl: `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}`,
+      sqlEditorUrl: `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}/sql/new`,
+      isConfigured: isReady,
+      tables: tableCheck,
+      mode: isReady ? 'SUPABASE_CLOUD_POSTGRES' : 'HYBRID_LOCAL_STORAGE'
+    });
+  });
+
   // GET fallbacks so GET requests never return 405 Method Not Allowed
   router.get('/auth/login', (req, res) => {
     res.json({ status: 'ACTIVE', message: 'AeroSAR Auth Service. Use POST with credentials to authenticate.' });
@@ -161,7 +194,7 @@ export function createApiRouter() {
   // AUTHENTICATION & OPERATOR MANAGEMENT
   // ==========================================
 
-  // 1. REGISTER NEW OPERATOR ACCOUNT
+  // 1. REGISTER NEW OPERATOR ACCOUNT (Syncs to Supabase 'operators' table)
   router.post('/auth/register', async (req, res) => {
     try {
       const body = req.body || {};
@@ -189,17 +222,17 @@ export function createApiRouter() {
         return res.status(400).json({ success: false, error: 'Access Key must be at least 4 characters long.' });
       }
 
-      const users = await readJsonFile('users.json', DEFAULT_SEED_USERS);
       const normalizedEmail = email.trim().toLowerCase();
       const normalizedCallSign = callSign.trim().toUpperCase();
 
-      // Check if email or callSign already registered
-      const existingUser = users.find(u => 
+      // Check local cache
+      const users = await readJsonFile('users.json', DEFAULT_SEED_USERS);
+      const existingLocal = users.find(u => 
         (u.email && u.email.toLowerCase() === normalizedEmail) || 
         (u.callSign && u.callSign.toUpperCase() === normalizedCallSign)
       );
 
-      if (existingUser) {
+      if (existingLocal) {
         return res.status(409).json({ 
           success: false, 
           error: `Operator with email "${email}" or call sign "${callSign}" already exists in the system.` 
@@ -210,22 +243,49 @@ export function createApiRouter() {
       const newUser = {
         id: newId,
         name: name.trim(),
+        call_sign: normalizedCallSign,
         callSign: normalizedCallSign,
         email: normalizedEmail,
         password: password.trim(),
         clearance: clearance || 'LEVEL-2 SAR MISSION PILOT',
+        drone_unit: droneUnit || 'AERO-FALCON-01 [Dual Optical 4K + FLIR Boson]',
         droneUnit: droneUnit || 'AERO-FALCON-01 [Dual Optical 4K + FLIR Boson]',
         role: role || 'Field SAR Drone Pilot',
         squadron: squadron || 'Alpha Quick-Response Wing',
-        createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        last_login: new Date().toISOString(),
         status: 'ACTIVE'
       };
 
+      // 1. Persist to Supabase if configured
+      if (isServerSupabaseReady()) {
+        try {
+          const supabase = getServerSupabase();
+          await supabase.from('operators').insert([{
+            id: newUser.id,
+            name: newUser.name,
+            call_sign: newUser.callSign,
+            email: newUser.email,
+            password: newUser.password,
+            clearance: newUser.clearance,
+            drone_unit: newUser.droneUnit,
+            role: newUser.role,
+            squadron: newUser.squadron,
+            created_at: newUser.created_at,
+            last_login: newUser.last_login,
+            status: newUser.status
+          }]);
+          console.log(`[Supabase] Operator ${newUser.callSign} synchronized to cloud database.`);
+        } catch (sbErr) {
+          console.warn('[Supabase Register Warning]:', sbErr.message);
+        }
+      }
+
+      // 2. Persist to local memory and disk
       users.push(newUser);
       await writeJsonFile('users.json', users);
 
-      const token = `SAR-TK-${crypto.randomUUID()}`;
+      const token = createSessionToken();
       activeSessions.set(token, newUser);
 
       console.log(`[AEROSAR-BACKEND] Registered new operator: ${newUser.callSign} (${newUser.email})`);
@@ -234,14 +294,15 @@ export function createApiRouter() {
         success: true,
         message: `Operator credentials registered successfully for ${newUser.callSign}.`,
         token,
-        user: sanitizeUser(newUser)
+        user: sanitizeUser(newUser),
+        supabaseLinked: isServerSupabaseReady()
       });
     } catch (err) {
       console.error('[AEROSAR-BACKEND] Register error:', err);
       return res.status(200).json({
         success: true,
         message: 'Operator registered successfully via backup controller.',
-        token: `SAR-TK-${Date.now()}`,
+        token: createSessionToken('SAR-TK-FALLBACK'),
         user: {
           name: req.body?.name || 'Operator',
           callSign: req.body?.callSign || 'OPERATOR',
@@ -253,7 +314,7 @@ export function createApiRouter() {
     }
   });
 
-  // 2. OPERATOR LOGIN
+  // 2. OPERATOR LOGIN (Verifies against Supabase 'operators' table or local registry)
   router.post('/auth/login', async (req, res) => {
     try {
       const body = req.body || {};
@@ -264,41 +325,63 @@ export function createApiRouter() {
         return res.status(400).json({ success: false, error: 'Operator Email or Call Sign is required.' });
       }
 
-      const users = await readJsonFile('users.json', DEFAULT_SEED_USERS);
       const query = rawEmail.trim().toLowerCase();
+      let activeUser = null;
 
-      // Find user by email or callsign
-      const user = users.find(u => 
-        (u.email && u.email.toLowerCase() === query) || 
-        (u.callSign && u.callSign.toLowerCase() === query)
-      );
+      // 1. Try Supabase cloud authentication first
+      if (isServerSupabaseReady()) {
+        try {
+          const supabase = getServerSupabase();
+          const { data, error } = await supabase
+            .from('operators')
+            .select('*')
+            .or(`email.ilike.${query},call_sign.ilike.${query}`);
 
-      if (!user) {
-        // Check default seed users as well
-        const seedUser = DEFAULT_SEED_USERS.find(u => 
-          u.email.toLowerCase() === query || 
-          u.callSign.toLowerCase() === query
-        );
-
-        if (!seedUser) {
-          return res.status(401).json({ 
-            success: false, 
-            error: 'Operator not found in SAR registry. Check email/callsign or create a new account.' 
-          });
+          if (!error && data && data.length > 0) {
+            const row = data[0];
+            activeUser = {
+              id: row.id,
+              name: row.name,
+              callSign: row.call_sign || row.callSign,
+              email: row.email,
+              password: row.password,
+              clearance: row.clearance,
+              droneUnit: row.drone_unit || row.droneUnit,
+              role: row.role,
+              squadron: row.squadron,
+              status: row.status
+            };
+          }
+        } catch (sbErr) {
+          console.warn('[Supabase Login fallback to local]:', sbErr.message);
         }
       }
 
-      const activeUser = user || DEFAULT_SEED_USERS.find(u => 
-        u.email.toLowerCase() === query || 
-        u.callSign.toLowerCase() === query
-      );
+      // 2. Local memory/disk lookup if not found in Supabase
+      if (!activeUser) {
+        const users = await readJsonFile('users.json', DEFAULT_SEED_USERS);
+        activeUser = users.find(u => 
+          (u.email && u.email.toLowerCase() === query) || 
+          (u.callSign && u.callSign.toLowerCase() === query)
+        ) || DEFAULT_SEED_USERS.find(u => 
+          u.email.toLowerCase() === query || 
+          u.callSign.toLowerCase() === query
+        );
+      }
+
+      if (!activeUser) {
+        return res.status(401).json({ 
+          success: false, 
+          error: 'Operator not found in SAR registry. Check email/callsign or create a new account.' 
+        });
+      }
 
       // Password check: allow if exact match or if demo keys used
       const isMatch = 
         !pass ||
         pass === activeUser.password || 
         pass === '••••••••••••' || 
-        pass === 'SAR-KEY-8924' ||
+        pass === 'SAR-KEY-8924' || 
         pass === 'SAR-ALPHA-PASS' ||
         pass === 'SAR-8924';
 
@@ -309,26 +392,30 @@ export function createApiRouter() {
         });
       }
 
-      // Safe update last login without blocking
+      // Update last login in Supabase and local cache safely
       try {
         activeUser.lastLogin = new Date().toISOString();
-        writeJsonFile('users.json', users).catch(() => {});
+        if (isServerSupabaseReady()) {
+          const supabase = getServerSupabase();
+          supabase.from('operators').update({ last_login: activeUser.lastLogin }).eq('id', activeUser.id).then();
+        }
+        writeJsonFile('users.json', memoryCache.get('users.json') || []).catch(() => {});
       } catch (e) {}
 
       const token = createSessionToken();
       activeSessions.set(token, activeUser);
 
-      console.log(`[AEROSAR-BACKEND] Operator login successful: ${activeUser.callSign}`);
+      console.log(`[AEROSAR-BACKEND] Operator login authenticated: ${activeUser.callSign}`);
 
       return res.json({
         success: true,
         message: `Welcome back, ${activeUser.callSign}. Command console authenticated.`,
         token,
-        user: sanitizeUser(activeUser)
+        user: sanitizeUser(activeUser),
+        supabaseLinked: isServerSupabaseReady()
       });
     } catch (err) {
       console.error('[AEROSAR-BACKEND] Login error:', err);
-      // Failsafe fallback: never emit a 500 error that locks the operator out
       const body = req.body || {};
       const query = String(body.email || body.callSign || body.operatorEmail || '').trim().toLowerCase();
       const matched = DEFAULT_SEED_USERS.find(u => 
@@ -356,18 +443,34 @@ export function createApiRouter() {
       return res.json({ success: true, user: sanitizeUser(user) });
     }
 
-    // Default fallback operator
     return res.json({ success: true, user: sanitizeUser(DEFAULT_SEED_USERS[0]) });
   });
 
   // 4. LIST ALL REGISTERED OPERATORS
   router.get('/auth/operators', async (req, res) => {
-    try {
-      const users = await readJsonFile('users.json', DEFAULT_SEED_USERS);
-      return res.json({ success: true, operators: users.map(sanitizeUser) });
-    } catch (err) {
-      return res.json({ success: true, operators: DEFAULT_SEED_USERS.map(sanitizeUser) });
+    if (isServerSupabaseReady()) {
+      try {
+        const supabase = getServerSupabase();
+        const { data, error } = await supabase.from('operators').select('*');
+        if (!error && data && data.length > 0) {
+          const ops = data.map(r => ({
+            id: r.id,
+            name: r.name,
+            callSign: r.call_sign || r.callSign,
+            email: r.email,
+            clearance: r.clearance,
+            droneUnit: r.drone_unit || r.droneUnit,
+            role: r.role,
+            squadron: r.squadron,
+            status: r.status
+          }));
+          return res.json({ success: true, operators: ops, source: 'SUPABASE' });
+        }
+      } catch (e) {}
     }
+
+    const users = await readJsonFile('users.json', DEFAULT_SEED_USERS);
+    return res.json({ success: true, operators: users.map(sanitizeUser), source: 'LOCAL' });
   });
 
   // ==========================================
@@ -375,12 +478,32 @@ export function createApiRouter() {
   // ==========================================
 
   router.get('/recon', async (req, res) => {
-    try {
-      const intel = await readJsonFile('recon.json', []);
-      return res.json({ success: true, count: intel.length, data: intel });
-    } catch (err) {
-      return res.json({ success: true, count: 0, data: [] });
+    if (isServerSupabaseReady()) {
+      try {
+        const supabase = getServerSupabase();
+        const { data, error } = await supabase.from('recon_vault').select('*').order('timestamp', { ascending: false }).limit(50);
+        if (!error && data) {
+          const mapped = data.map(d => ({
+            id: d.id,
+            timestamp: d.timestamp,
+            areaName: d.area_name || d.areaName,
+            lat: d.lat,
+            lng: d.lng,
+            altitude: d.altitude,
+            heading: d.heading,
+            droneModel: d.drone_model || d.droneModel,
+            callSign: d.call_sign || d.callSign,
+            imageUrl: d.image_url || d.imageUrl,
+            environmental: d.environmental,
+            targetsVisible: d.targets_visible || d.targetsVisible
+          }));
+          return res.json({ success: true, count: mapped.length, data: mapped, source: 'SUPABASE' });
+        }
+      } catch (e) {}
     }
+
+    const intel = await readJsonFile('recon.json', []);
+    return res.json({ success: true, count: intel.length, data: intel, source: 'LOCAL' });
   });
 
   router.post('/recon', async (req, res) => {
@@ -390,7 +513,6 @@ export function createApiRouter() {
         return res.status(400).json({ success: false, error: 'Invalid reconnaissance payload.' });
       }
 
-      const intelList = await readJsonFile('recon.json', []);
       const record = {
         id: newSnapshot.id || `RECON-CAP-${Date.now()}`,
         timestamp: newSnapshot.timestamp || new Date().toISOString(),
@@ -406,6 +528,27 @@ export function createApiRouter() {
         targetsVisible: newSnapshot.targetsVisible || 1
       };
 
+      if (isServerSupabaseReady()) {
+        try {
+          const supabase = getServerSupabase();
+          await supabase.from('recon_vault').insert([{
+            id: record.id,
+            timestamp: record.timestamp,
+            area_name: record.areaName,
+            lat: record.lat,
+            lng: record.lng,
+            altitude: record.altitude,
+            heading: record.heading,
+            drone_model: record.droneModel,
+            call_sign: record.callSign,
+            image_url: record.imageUrl,
+            environmental: record.environmental,
+            targets_visible: record.targetsVisible
+          }]);
+        } catch (e) {}
+      }
+
+      const intelList = await readJsonFile('recon.json', []);
       intelList.unshift(record);
       await writeJsonFile('recon.json', intelList.slice(0, 50));
 
@@ -418,6 +561,14 @@ export function createApiRouter() {
   router.delete('/recon/:id', async (req, res) => {
     try {
       const { id } = req.params;
+
+      if (isServerSupabaseReady()) {
+        try {
+          const supabase = getServerSupabase();
+          await supabase.from('recon_vault').delete().eq('id', id);
+        } catch (e) {}
+      }
+
       const intelList = await readJsonFile('recon.json', []);
       const filtered = intelList.filter(item => item.id !== id);
       await writeJsonFile('recon.json', filtered);
@@ -432,30 +583,32 @@ export function createApiRouter() {
   // ==========================================
 
   router.get('/missions', async (req, res) => {
-    try {
-      const missions = await readJsonFile('missions.json', []);
-      return res.json({ success: true, missions });
-    } catch (err) {
-      return res.json({ success: true, missions: [] });
+    if (isServerSupabaseReady()) {
+      try {
+        const supabase = getServerSupabase();
+        const { data, error } = await supabase.from('missions').select('*').order('start_time', { ascending: false });
+        if (!error && data) {
+          const mapped = data.map(m => ({
+            id: m.id,
+            title: m.title,
+            category: m.category,
+            priority: m.priority,
+            stage: m.stage,
+            status: m.status,
+            targetCoordinates: m.target_coordinates || m.targetCoordinates,
+            assignedUnit: m.assigned_unit || m.assignedUnit,
+            assignedOperator: m.assigned_operator || m.assignedOperator,
+            survivorsLocated: m.survivors_located || m.survivorsLocated,
+            startTime: m.start_time || m.startTime,
+            notes: m.notes
+          }));
+          return res.json({ success: true, missions: mapped, source: 'SUPABASE' });
+        }
+      } catch (e) {}
     }
-  });
 
-  router.post('/missions', async (req, res) => {
-    try {
-      const missionData = req.body;
-      const missions = await readJsonFile('missions.json', []);
-      const newMission = {
-        id: `MSN-${Date.now().toString().slice(-4)}`,
-        startTime: new Date().toISOString(),
-        status: 'ACTIVE_SURVEILLANCE',
-        ...missionData
-      };
-      missions.unshift(newMission);
-      await writeJsonFile('missions.json', missions);
-      return res.status(201).json({ success: true, mission: newMission });
-    } catch (err) {
-      return res.status(200).json({ success: true, mission: req.body });
-    }
+    const missions = await readJsonFile('missions.json', []);
+    return res.json({ success: true, missions, source: 'LOCAL' });
   });
 
   // ==========================================
@@ -473,11 +626,18 @@ export function createApiRouter() {
       version: '2.4.0-SAR-PROD',
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
+      supabase: {
+        projectRef: SUPABASE_PROJECT_REF,
+        url: SUPABASE_URL,
+        dashboard: `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}`,
+        isConfigured: isServerSupabaseReady(),
+        status: isServerSupabaseReady() ? 'CONNECTED' : 'STANDBY (AWAITING_ANON_KEY)'
+      },
       database: {
         usersCount: users.length,
         missionsCount: missions.length,
         reconCapturesCount: recon.length,
-        storageEngine: 'Memory-Cached Atomic Store (Zero 500 Errors)'
+        storageEngine: isServerSupabaseReady() ? 'Supabase PostgreSQL + Memory Cache' : 'Memory-Cached Atomic Store'
       },
       bridges: {
         mavlinkBridge: 'ONLINE (UDP 14550)',
