@@ -14,10 +14,11 @@ import {
   Cable, 
   Cpu,
   Layers,
-  Camera
+  Camera,
+  Database
 } from 'lucide-react';
 
-const TopNavbar = ({ onOpenReportModal, onOpenDroneModal, onOpenSOSModal, onOpenDiagramModal, onOpenVaultModal }) => {
+const TopNavbar = ({ onOpenReportModal, onOpenDroneModal, onOpenSOSModal, onOpenDiagramModal, onOpenVaultModal, onOpenSupabaseModal }) => {
   const { 
     user, 
     logout, 
