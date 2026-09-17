@@ -6,13 +6,11 @@ import {
   Split, 
   Eye, 
   Flame, 
-  Layers, 
   ZoomIn, 
   Lightbulb, 
   Scan, 
   Maximize2, 
   Sparkles,
-  Sliders,
   Video,
   Camera
 } from 'lucide-react';
@@ -32,7 +30,6 @@ const DualCameraView = () => {
   } = useDrone();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [msxOpacity, setMsxOpacity] = useState(0.55);
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -80,17 +77,6 @@ const DualCameraView = () => {
             <span>FLIR THERMAL</span>
           </button>
 
-          <button
-            onClick={() => setCameraMode('msx')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-              cameraState.viewMode === 'msx'
-                ? 'bg-gradient-to-r from-green-600 to-rose-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>MSX FUSED</span>
-          </button>
         </div>
 
         {/* Live Physical Camera Device Badge if active */}
@@ -234,36 +220,6 @@ const DualCameraView = () => {
           </div>
         )}
 
-        {/* 4. MSX MULTISPECTRAL FUSED MODE */}
-        {cameraState.viewMode === 'msx' && (
-          <div className="relative w-full h-full">
-            <div className="absolute inset-0">
-              <CameraCanvasRGB />
-            </div>
-            <div 
-              className="absolute inset-0 transition-opacity pointer-events-none mix-blend-screen"
-              style={{ opacity: msxOpacity }}
-            >
-              <CameraCanvasThermal />
-            </div>
-
-            {/* MSX Blend Slider Overlay */}
-            <div className="absolute bottom-16 right-6 z-20 bg-white/95 p-2.5 rounded-lg border border-slate-300 shadow-lg flex items-center gap-2 font-mono-code text-[11px] text-slate-800 backdrop-blur-sm">
-              <Sliders className="w-3.5 h-3.5 text-green-700" />
-              <span className="font-bold">MSX BLEND:</span>
-              <input
-                type="range"
-                min="0.1"
-                max="0.9"
-                step="0.05"
-                value={msxOpacity}
-                onChange={(e) => setMsxOpacity(parseFloat(e.target.value))}
-                className="w-24 accent-green-600 cursor-pointer"
-              />
-              <span className="font-bold text-green-700">{(msxOpacity * 100).toFixed(0)}%</span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
