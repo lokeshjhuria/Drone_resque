@@ -4,6 +4,7 @@ import { useDrone } from '../../context/DroneContext';
 const CameraCanvasRGB = () => {
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
+  const imgStreamRef = useRef(null);
   const { cameraState, detections, activeTargetId, telemetry, droneConnection, liveMediaStream } = useDrone();
 
   // Attach live video stream to hidden video element if real camera is enabled
@@ -35,10 +36,23 @@ const CameraCanvasRGB = () => {
       ctx.scale(zoom, zoom);
       ctx.translate(-w / 2, -h / 2);
 
-      // 1. If physical drone video stream is active, draw live webcam / capture card feed
-      if (droneConnection.useRealCamera && videoRef.current && videoRef.current.readyState >= 2) {
-        ctx.drawImage(videoRef.current, 0, 0, w, h);
-      } else {
+      // 1. If physical drone video stream is active, draw live webcam / capture card or Wi-Fi IP/MJPEG feed
+      let renderedRealStream = false;
+      if (droneConnection?.useRealCamera) {
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+          try {
+            ctx.drawImage(videoRef.current, 0, 0, w, h);
+            renderedRealStream = true;
+          } catch (err) {}
+        } else if (imgStreamRef.current && imgStreamRef.current.complete && imgStreamRef.current.naturalWidth > 0) {
+          try {
+            ctx.drawImage(imgStreamRef.current, 0, 0, w, h);
+            renderedRealStream = true;
+          } catch (err) {}
+        }
+      }
+
+      if (!renderedRealStream) {
         // Procedural aerial search terrain in tactical green/earth tones
         const bgGrad = ctx.createLinearGradient(0, 0, w, h);
         bgGrad.addColorStop(0, '#0c1a12');
@@ -243,17 +257,21 @@ const CameraCanvasRGB = () => {
 
       // Top-left channel badge
       ctx.fillStyle = 'rgba(5, 12, 8, 0.85)';
-      ctx.fillRect(16, 16, 230, 36);
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)';
+      const badgeWidth = droneConnection.connectedWifiSsid ? 280 : 230;
+      ctx.fillRect(16, 16, badgeWidth, 36);
+      ctx.strokeStyle = droneConnection.isDroneWifi ? 'rgba(56, 189, 248, 0.6)' : 'rgba(34, 197, 94, 0.5)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(16, 16, 230, 36);
+      ctx.strokeRect(16, 16, badgeWidth, 36);
 
-      ctx.fillStyle = '#4ade80';
+      ctx.fillStyle = droneConnection.isDroneWifi ? '#38bdf8' : '#4ade80';
       ctx.font = 'bold 12px monospace';
-      ctx.fillText(droneConnection.useRealCamera ? 'CAM-01: LIVE HARDWARE FEED' : 'CAM-01: OPTICAL 4K RGB', 26, 32);
+      const camTitle = droneConnection.isDroneWifi 
+        ? `CAM-01: ${droneConnection.connectedWifiSsid}` 
+        : (droneConnection.useRealCamera ? 'CAM-01: LIVE HARDWARE FEED' : 'CAM-01: OPTICAL 4K RGB');
+      ctx.fillText(camTitle, 26, 32);
       ctx.fillStyle = '#a7f3d0';
       ctx.font = '10px monospace';
-      ctx.fillText(`FOV 84° | ${cameraState.zoomLevel}X OPTICAL | 60 FPS`, 26, 46);
+      ctx.fillText(droneConnection.isDroneWifi ? `IP STREAM | ${cameraState.zoomLevel}X OPTICAL | 60 FPS` : `FOV 84° | ${cameraState.zoomLevel}X OPTICAL | 60 FPS`, 26, 46);
 
       // Top-right recording / live indicator
       ctx.fillStyle = 'rgba(5, 12, 8, 0.85)';
@@ -295,6 +313,19 @@ const CameraCanvasRGB = () => {
     <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border border-green-500/30 group">
       {/* Hidden video element for streaming live webcam or HDMI capture card */}
       <video ref={videoRef} playsInline muted className="hidden" />
+      {/* Hidden image element for live Wi-Fi MJPEG / HTTP stream */}
+      {droneConnection?.useRealCamera && (droneConnection?.streamProxyUrl || droneConnection?.cameraStreamUrl) && (
+        <img
+          ref={imgStreamRef}
+          src={droneConnection.streamProxyUrl || droneConnection.cameraStreamUrl}
+          crossOrigin="anonymous"
+          alt="Drone WiFi Live Stream"
+          className="hidden"
+          onError={(e) => {
+            // Fallback or retry silently
+          }}
+        />
+      )}
       <canvas ref={canvasRef} className="w-full h-full object-cover block" />
       <div className="scanlines-overlay absolute inset-0 opacity-20 pointer-events-none"></div>
     </div>

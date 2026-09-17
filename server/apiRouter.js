@@ -3,8 +3,11 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import http from 'http';
+import https from 'https';
 import { fileURLToPath } from 'url';
 import { getServerSupabase, isServerSupabaseReady, SUPABASE_PROJECT_REF, SUPABASE_URL } from './supabaseClient.js';
+import { scanAvailableWifiNetworks, getConnectedWifiInterface, connectToWifiNetwork, identifyDroneNetwork } from './wifiService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -643,9 +646,124 @@ export function createApiRouter() {
         mavlinkBridge: 'ONLINE (UDP 14550)',
         thermalFlirStream: 'ONLINE (RTSP/H.264)',
         yoloSarV4Inference: 'ONLINE (CUDA TensorRT 30fps)',
-        sonSensorBus: 'ONLINE (I2C 400kHz)'
+        sonSensorBus: 'ONLINE (I2C 400kHz)',
+        wifiDroneScanner: 'ONLINE (802.11ax/ac/n 2.4/5.8GHz)'
       }
     });
+  });
+
+  // ==========================================
+  // DRONE WI-FI SCANNER & HARDWARE LINK
+  // ==========================================
+
+  // 1. Scan and return all visible Wi-Fi networks in range + drone identification
+  router.get('/wifi/networks', async (req, res) => {
+    try {
+      const data = await scanAvailableWifiNetworks();
+      return res.json({ success: true, ...data });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 2. Get current connected Wi-Fi interface status
+  router.get('/wifi/status', async (req, res) => {
+    try {
+      const status = await getConnectedWifiInterface();
+      return res.json({ success: true, ...status });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 3. Connect to a specific Wi-Fi network
+  router.post('/wifi/connect', async (req, res) => {
+    try {
+      const { ssid, password } = req.body || {};
+      if (!ssid) {
+        return res.status(400).json({ success: false, error: 'SSID is required to connect.' });
+      }
+      const result = await connectToWifiNetwork(ssid, password);
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 4. Drone Camera Video Stream Proxy (forwards live MJPEG / HTTP streams with CORS headers)
+  router.get('/drone/stream-proxy', (req, res) => {
+    const streamUrl = req.query.url;
+    if (!streamUrl) {
+      return res.status(400).send('Drone stream URL query parameter required (?url=http://...)');
+    }
+
+    try {
+      const parsed = new URL(streamUrl);
+      const client = parsed.protocol === 'https:' ? https : http;
+
+      const proxyReq = client.request(streamUrl, { timeout: 8000 }, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode, {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': proxyRes.headers['content-type'] || 'multipart/x-mixed-replace; boundary=frame',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Connection': 'close',
+          'Pragma': 'no-cache'
+        });
+        proxyRes.pipe(res);
+      });
+
+      proxyReq.on('error', (e) => {
+        if (!res.headersSent) {
+          res.status(502).json({ success: false, error: `Drone camera feed unreachable at ${streamUrl}: ${e.message}` });
+        }
+      });
+
+      req.on('close', () => {
+        proxyReq.destroy();
+      });
+
+      proxyReq.end();
+    } catch (err) {
+      return res.status(400).json({ success: false, error: 'Invalid drone stream URL format: ' + err.message });
+    }
+  });
+
+  // 5. Test Ping Drone Camera IP
+  router.post('/drone/ping-camera', async (req, res) => {
+    const { url } = req.body || {};
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'Stream URL is required.' });
+    }
+
+    try {
+      const parsed = new URL(url);
+      const client = parsed.protocol === 'https:' ? https : http;
+      const startTime = Date.now();
+
+      const testReq = client.request(url, { method: 'HEAD', timeout: 3000 }, (testRes) => {
+        const latency = Date.now() - startTime;
+        res.json({
+          success: true,
+          status: testRes.statusCode,
+          contentType: testRes.headers['content-type'] || 'unknown',
+          latencyMs: latency,
+          message: `Drone camera responding at ${url} (${latency}ms)`
+        });
+      });
+
+      testReq.on('error', (e) => {
+        res.json({
+          success: false,
+          reachable: false,
+          error: e.message,
+          message: `Camera unreachable at ${url}. Ensure computer is connected to the drone's Wi-Fi network.`
+        });
+      });
+
+      testReq.end();
+    } catch (err) {
+      res.status(400).json({ success: false, error: err.message });
+    }
   });
 
   return router;

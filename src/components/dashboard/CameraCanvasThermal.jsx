@@ -3,7 +3,16 @@ import { useDrone } from '../../context/DroneContext';
 
 const CameraCanvasThermal = () => {
   const canvasRef = useRef(null);
-  const { cameraState, detections, activeTargetId, telemetry } = useDrone();
+  const videoRef = useRef(null);
+  const imgStreamRef = useRef(null);
+  const { cameraState, detections, activeTargetId, telemetry, droneConnection, liveMediaStream } = useDrone();
+
+  useEffect(() => {
+    if (videoRef.current && liveMediaStream) {
+      videoRef.current.srcObject = liveMediaStream;
+      videoRef.current.play().catch(e => console.log('Video play interrupted:', e));
+    }
+  }, [liveMediaStream]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -27,8 +36,32 @@ const CameraCanvasThermal = () => {
       ctx.scale(zoom, zoom);
       ctx.translate(-w / 2, -h / 2);
 
-      // 1. Cold background terrain gradient according to palette
-      let bgGrad = ctx.createLinearGradient(0, 0, w, h);
+      // 1. If physical drone video stream is active, render live feed with FLIR radiometric filter
+      let renderedRealThermal = false;
+      if (droneConnection?.useRealCamera) {
+        const source = (videoRef.current && videoRef.current.readyState >= 2)
+          ? videoRef.current
+          : (imgStreamRef.current && imgStreamRef.current.complete && imgStreamRef.current.naturalWidth > 0 ? imgStreamRef.current : null);
+
+        if (source) {
+          try {
+            if (palette === 'whiteHot') {
+              ctx.filter = 'grayscale(100%) contrast(160%) brightness(85%) invert(100%)';
+            } else if (palette === 'ironbow') {
+              ctx.filter = 'contrast(170%) brightness(75%) sepia(80%) hue-rotate(275deg) saturate(350%)';
+            } else {
+              ctx.filter = 'contrast(160%) brightness(80%) hue-rotate(180deg) saturate(300%)';
+            }
+            ctx.drawImage(source, 0, 0, w, h);
+            ctx.filter = 'none';
+            renderedRealThermal = true;
+          } catch (err) {}
+        }
+      }
+
+      if (!renderedRealThermal) {
+        // Cold background terrain gradient according to palette
+        let bgGrad = ctx.createLinearGradient(0, 0, w, h);
       if (palette === 'ironbow') {
         bgGrad.addColorStop(0, '#0a031a');
         bgGrad.addColorStop(0.5, '#1e0836');
@@ -73,8 +106,9 @@ const CameraCanvasThermal = () => {
         ctx.strokeStyle = palette === 'whiteHot' ? '#222222' : '#1d0838';
         ctx.stroke();
       });
+    }
 
-      // 2. Render Intense Human Body Thermal Heat Signatures
+    // 2. Render Intense Human Body Thermal Heat Signatures
       detections.forEach((det, idx) => {
         const posX = (det.screenX / 100) * w;
         const posY = (det.screenY / 100) * h;
@@ -191,14 +225,18 @@ const CameraCanvasThermal = () => {
 
       // Thermal Calibration & Sensor Header
       ctx.fillStyle = 'rgba(7, 11, 18, 0.8)';
-      ctx.fillRect(16, 16, 230, 36);
-      ctx.strokeStyle = 'rgba(255, 51, 102, 0.5)';
+      const badgeWidth = droneConnection?.connectedWifiSsid ? 280 : 230;
+      ctx.fillRect(16, 16, badgeWidth, 36);
+      ctx.strokeStyle = droneConnection?.isDroneWifi ? 'rgba(56, 189, 248, 0.6)' : 'rgba(255, 51, 102, 0.5)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(16, 16, 230, 36);
+      ctx.strokeRect(16, 16, badgeWidth, 36);
 
-      ctx.fillStyle = '#ff3366';
+      ctx.fillStyle = droneConnection?.isDroneWifi ? '#38bdf8' : '#ff3366';
       ctx.font = 'bold 12px monospace';
-      ctx.fillText('CAM-02: FLIR THERMAL LWIR', 26, 32);
+      const thermTitle = droneConnection?.isDroneWifi
+        ? `CAM-02: FLIR [${droneConnection.connectedWifiSsid}]`
+        : (droneConnection?.useRealCamera ? 'CAM-02: LIVE THERMAL FX' : 'CAM-02: FLIR THERMAL LWIR');
+      ctx.fillText(thermTitle, 26, 32);
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '10px monospace';
       ctx.fillText(`NETD <40mK | 7.5-13.5µm | ${palette.toUpperCase()}`, 26, 46);
@@ -258,10 +296,25 @@ const CameraCanvasThermal = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [cameraState, detections, activeTargetId, telemetry]);
+  }, [cameraState, detections, activeTargetId, telemetry, droneConnection]);
 
   return (
     <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border border-hud-infrared/40 group">
+      {/* Hidden video element for live webcam / capture card feed */}
+      <video ref={videoRef} playsInline muted className="hidden" />
+      {/* Hidden image element for live Wi-Fi MJPEG / HTTP stream */}
+      {droneConnection?.useRealCamera && (droneConnection?.streamProxyUrl || droneConnection?.cameraStreamUrl) && (
+        <img
+          ref={imgStreamRef}
+          src={droneConnection.streamProxyUrl || droneConnection.cameraStreamUrl}
+          crossOrigin="anonymous"
+          alt="Drone Thermal Stream"
+          className="hidden"
+          onError={(e) => {
+            // Fallback or retry silently
+          }}
+        />
+      )}
       <canvas ref={canvasRef} className="w-full h-full object-cover block" />
       <div className="scanlines-overlay absolute inset-0 opacity-20 pointer-events-none"></div>
     </div>

@@ -40,13 +40,18 @@ export const DroneProvider = ({ children }) => {
   // Full Drone Hardware & Telemetry Link details
   const [droneConnection, setDroneConnection] = useState({
     isConnected: true,
-    connectionType: 'MAVLINK_UDP',
-    protocolVersion: 'MAVLink v2.0 Microhard Secure',
-    droneIp: '192.168.1.120',
-    port: '14550',
+    connectionType: 'DRONE_WIFI',
+    protocolVersion: 'AeroSAR 802.11 WiFi & MAVLink v2.0',
+    droneIp: '192.168.4.1',
+    port: '80',
     baudRate: '115200',
     rtspRgbUrl: 'rtsp://192.168.1.120:8554/live/rgb',
     rtspThermalUrl: 'rtsp://192.168.1.120:8554/live/thermal',
+    cameraStreamUrl: 'http://192.168.4.1/stream',
+    cameraStreamType: 'SIMULATED',
+    connectedWifiSsid: 'TP-Link_CAF8',
+    isDroneWifi: false,
+    droneBrand: '',
     linkQuality: 99,
     latency: 12,
     packetsReceived: 21840,
@@ -55,12 +60,15 @@ export const DroneProvider = ({ children }) => {
     useRealCamera: false,
     selectedVideoDeviceId: '',
     flightController: 'Pixhawk 6X Pro Dual IMU',
-    radioModule: 'Telemetry Comm Module 2.4GHz (15km Range)',
+    radioModule: 'Dual-Band 2.4/5.8GHz Tactical Wi-Fi NIC',
     rssi: -46,
     snr: 29,
     escTelemetry: 'All 6 ESCs OK (52°C Avg)',
   });
 
+  const [wifiNetworks, setWifiNetworks] = useState([]);
+  const [activeWifi, setActiveWifi] = useState(null);
+  const [isScanningWifi, setIsScanningWifi] = useState(false);
   const [liveMediaStream, setLiveMediaStream] = useState(null);
   const [availableVideoDevices, setAvailableVideoDevices] = useState([]);
 
@@ -309,6 +317,77 @@ export const DroneProvider = ({ children }) => {
     }
     setDroneConnection(prev => ({ ...prev, useRealCamera: false }));
     addLog('INFO', 'Switched back to internal high-precision SAR simulation feed.');
+  };
+
+  // Wi-Fi Scanner and Drone Camera Bridge
+  const scanWifiNetworks = useCallback(async () => {
+    setIsScanningWifi(true);
+    try {
+      const res = await api.wifi.scanNetworks();
+      if (res && res.networks) {
+        setWifiNetworks(res.networks);
+        if (res.interface) {
+          setActiveWifi(res.interface);
+          if (res.interface.connectedSsid) {
+            setDroneConnection(prev => ({
+              ...prev,
+              connectedWifiSsid: res.interface.connectedSsid,
+              isDroneWifi: !!res.interface.droneInfo,
+              droneBrand: res.interface.droneInfo?.brand || prev.droneBrand
+            }));
+          }
+        }
+      }
+      return res;
+    } catch (e) {
+      console.warn('Wi-Fi scan failed:', e);
+    } finally {
+      setIsScanningWifi(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    scanWifiNetworks();
+  }, [scanWifiNetworks]);
+
+  const connectWifiNetwork = async (ssid, password = '') => {
+    soundFX.playClick();
+    addLog('INFO', `Dispatched Wi-Fi connection handshake to: ${ssid}`);
+    const res = await api.wifi.connect(ssid, password);
+    if (res.success) {
+      addLog('ALERT', `Wi-Fi radio connected to drone network: ${ssid}`);
+      await scanWifiNetworks();
+    } else {
+      addLog('ALERT', `Failed to connect to ${ssid}: ${res.error || res.message}`);
+    }
+    return res;
+  };
+
+  const startDroneWifiCamera = (streamUrl, streamType = 'MJPEG', droneSsid = '') => {
+    soundFX.playClick();
+    setDroneConnection(prev => ({
+      ...prev,
+      isConnected: true,
+      useRealCamera: true,
+      cameraStreamUrl: streamUrl,
+      cameraStreamType: streamType,
+      connectionType: 'DRONE_WIFI',
+      connectedWifiSsid: droneSsid || prev.connectedWifiSsid || 'DRONE-WIFI-ACTIVE',
+      linkQuality: 98,
+      latency: 14,
+    }));
+    addLog('ALERT', `REAL DRONE CAMERA ONLINE: Connected via Wi-Fi [${streamType}] streaming at ${streamUrl}`);
+  };
+
+  const stopDroneWifiCamera = () => {
+    soundFX.playClick();
+    setDroneConnection(prev => ({
+      ...prev,
+      useRealCamera: false,
+      cameraStreamUrl: '',
+      cameraStreamType: 'SIMULATED',
+    }));
+    addLog('INFO', 'Drone real camera feed disconnected. Switched to tactical SAR simulator.');
   };
 
   // SEARCH AREA & RELOCATE DRONE
@@ -649,6 +728,13 @@ export const DroneProvider = ({ children }) => {
         startRealCamera,
         stopRealCamera,
         liveMediaStream,
+        wifiNetworks,
+        activeWifi,
+        isScanningWifi,
+        scanWifiNetworks,
+        connectWifiNetwork,
+        startDroneWifiCamera,
+        stopDroneWifiCamera,
         telemetry,
         activeSearchArea,
         searchAndFlyTo,
