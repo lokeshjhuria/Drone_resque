@@ -44,20 +44,20 @@ const PRESET_GEO_COORDINATES = {
 };
 
 const QUICK_ACTIONS = [
-  { label: 'Lock Survivors', query: 'Report survivor triage and lock targets', icon: Crosshair, color: 'text-amber-400' },
-  { label: 'Fly to Delhi', query: 'Fly to Delhi NCR', icon: Navigation, color: 'text-green-400' },
-  { label: 'Snapshot Recon', query: 'Take recon snapshot and save evidence', icon: Camera, color: 'text-emerald-400' },
-  { label: 'Ironbow Thermal', query: 'Switch thermal palette to ironbow', icon: Thermometer, color: 'text-rose-400' },
-  { label: 'Battery & Health', query: 'What is drone battery and altitude?', icon: Activity, color: 'text-lime-400' },
-  { label: 'Emergency RTH', query: 'Return to home', icon: Zap, color: 'text-yellow-400' },
+  { label: 'Lock Survivors', query: 'Report survivor triage and lock targets', icon: Crosshair, color: 'text-amber-600' },
+  { label: 'Fly to Delhi', query: 'Fly to Delhi NCR', icon: Navigation, color: 'text-green-600' },
+  { label: 'Snapshot Recon', query: 'Take recon snapshot and save evidence', icon: Camera, color: 'text-emerald-600' },
+  { label: 'Ironbow Thermal', query: 'Switch thermal palette to ironbow', icon: Thermometer, color: 'text-rose-600' },
+  { label: 'Battery & Health', query: 'What is drone battery and altitude?', icon: Activity, color: 'text-lime-700' },
+  { label: 'Emergency RTH', query: 'Return to home', icon: Zap, color: 'text-amber-600' },
 ];
 
 const AeroOrb = ({ isOpen }) => (
-  <div className={`relative flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 ${isOpen ? 'shadow-[0_0_25px_rgba(74,222,128,0.75)]' : 'shadow-[0_0_18px_rgba(34,197,94,0.6)]'}`}>
-    <span className="absolute inset-[-4px] rounded-full border border-green-400/80 animate-[spin_5s_linear_infinite]" />
-    <span className="absolute inset-[-8px] rounded-full border border-lime-400/50 border-l-transparent border-b-transparent animate-[spin_3s_linear_infinite_reverse]" />
-    <span className="absolute h-6 w-6 rounded-full bg-gradient-to-tr from-emerald-500 via-green-400 to-lime-300 blur-[2px]" />
-    <Bot className="relative z-10 h-5 w-5 text-white" />
+  <div className={`relative flex h-11 w-11 items-center justify-center rounded-full bg-green-50 border border-green-300 ${isOpen ? 'shadow-[0_0_20px_rgba(34,197,94,0.45)] ring-2 ring-green-400/50' : 'shadow-sm'}`}>
+    <span className="absolute inset-[-4px] rounded-full border border-green-400/60 animate-[spin_5s_linear_infinite]" />
+    <span className="absolute inset-[-7px] rounded-full border border-emerald-300/40 border-l-transparent border-b-transparent animate-[spin_3s_linear_infinite_reverse]" />
+    <span className="absolute h-6 w-6 rounded-full bg-gradient-to-tr from-green-200 via-emerald-300 to-lime-200 blur-[2px]" />
+    <Bot className="relative z-10 h-5 w-5 text-green-700" />
   </div>
 );
 
@@ -384,21 +384,21 @@ const AICopilot = () => {
   return (
     <>
       {isOpen && (
-        <aside className="fixed bottom-4 right-4 z-40 flex w-[min(460px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-green-500/50 bg-slate-950/95 shadow-2xl shadow-green-950/50 backdrop-blur-xl transition-all duration-300">
-          {/* Header Bar */}
-          <div className="relative overflow-hidden border-b border-green-500/30 bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950/80 px-4 py-3 text-white">
-            <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-green-400/20 blur-2xl" />
+        <aside className="fixed bottom-4 right-4 z-40 flex w-[min(460px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-green-300/80 bg-white shadow-2xl shadow-slate-900/15 backdrop-blur-xl transition-all duration-300">
+          {/* Header Bar - Light Theme */}
+          <div className="relative overflow-hidden border-b border-green-200 bg-gradient-to-r from-green-50 via-emerald-50/70 to-white px-4 py-3 text-slate-900">
+            <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-green-300/20 blur-2xl" />
             <div className="relative flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <AeroOrb isOpen />
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-chakra text-lg font-bold tracking-wider text-green-100">AERO</span>
-                    <span className="rounded bg-green-500/20 px-1.5 py-0.5 font-mono-code text-[9px] font-semibold tracking-wider text-green-300 border border-green-400/40">
+                    <span className="font-chakra text-lg font-bold tracking-wider text-green-800">AERO</span>
+                    <span className="rounded bg-green-100 px-2 py-0.5 font-mono-code text-[9px] font-bold tracking-wider text-green-800 border border-green-300">
                       AUTONOMOUS COPILOT
                     </span>
                   </div>
-                  <div className="font-mono-code text-[9px] tracking-wider text-slate-400">
+                  <div className="font-mono-code text-[9px] tracking-wider text-slate-500">
                     SEARCH & RESCUE MISSION INTEL
                   </div>
                 </div>
@@ -408,41 +408,41 @@ const AICopilot = () => {
                 <button
                   onClick={() => setIsVoiceEnabled(v => !v)}
                   title={isVoiceEnabled ? 'Mute Aero Voice' : 'Enable Tactical Voice Readout'}
-                  className={`rounded-lg p-1.5 transition-colors ${isVoiceEnabled ? 'bg-green-500/30 text-green-200 border border-green-400/50' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                  className={`rounded-lg p-1.5 transition-colors ${isVoiceEnabled ? 'bg-green-100 text-green-800 border border-green-300' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
                 >
-                  {isVoiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                  {isVoiceEnabled ? <Volume2 className="h-4 w-4 text-green-700" /> : <VolumeX className="h-4 w-4" />}
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}
                   title="Close Aero"
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-colors"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            {/* Live Telemetry Status Strip */}
-            <div className="mt-2.5 flex items-center justify-between border-t border-green-500/20 pt-2 font-mono-code text-[10px] text-slate-300">
+            {/* Live Telemetry Status Strip - Light Theme */}
+            <div className="mt-2.5 flex items-center justify-between border-t border-green-200/80 pt-2 font-mono-code text-[10px] text-slate-600">
               <div className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-                <span>ALT: <span className="font-bold text-white">{telemetry?.altitude || 120}m</span></span>
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                <span>ALT: <span className="font-bold text-slate-900">{telemetry?.altitude || 120}m</span></span>
               </div>
-              <div>BATT: <span className={`font-bold ${(telemetry?.battery || 86) < 25 ? 'text-red-400' : 'text-green-400'}`}>{telemetry?.battery || 86}%</span></div>
-              <div>TARGETS: <span className="font-bold text-amber-300">{detections?.length || 0}</span></div>
+              <div>BATT: <span className={`font-bold ${(telemetry?.battery || 86) < 25 ? 'text-red-600' : 'text-green-700'}`}>{telemetry?.battery || 86}%</span></div>
+              <div>TARGETS: <span className="font-bold text-amber-700">{detections?.length || 0}</span></div>
               <div className="flex items-center gap-1">
-                <Radio className="h-3 w-3 text-green-400" />
-                <span className="text-green-300 uppercase">{telemetry?.flightMode || 'AUTO'}</span>
+                <Radio className="h-3 w-3 text-green-600" />
+                <span className="text-green-800 font-bold uppercase">{telemetry?.flightMode || 'AUTO'}</span>
               </div>
             </div>
           </div>
 
-          {/* Messages Container */}
-          <div className="max-h-[min(480px,58vh)] space-y-3 overflow-y-auto bg-slate-900/60 p-3.5 scrollbar-thin scrollbar-thumb-slate-700">
+          {/* Messages Container - Light Theme */}
+          <div className="max-h-[min(480px,58vh)] space-y-3 overflow-y-auto bg-slate-50/70 p-3.5 scrollbar-thin scrollbar-thumb-slate-300">
             {/* Quick Action Chips */}
             <div className="space-y-1.5 pb-1">
-              <div className="flex items-center gap-1 font-mono-code text-[9px] font-semibold tracking-wider text-slate-400 uppercase">
-                <Sparkles className="h-3 w-3 text-green-400" /> Direct Tactical Directives:
+              <div className="flex items-center gap-1 font-mono-code text-[9px] font-bold tracking-wider text-slate-600 uppercase">
+                <Sparkles className="h-3 w-3 text-green-600" /> Direct Tactical Directives:
               </div>
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                 {QUICK_ACTIONS.map((action) => {
@@ -452,7 +452,7 @@ const AICopilot = () => {
                       key={action.label}
                       onClick={() => askAero(action.query)}
                       disabled={isLoading}
-                      className="flex items-center gap-1.5 rounded-lg border border-slate-700/70 bg-slate-800/80 px-2.5 py-1.5 text-left font-mono-code text-[10px] text-slate-200 transition-all hover:border-green-400 hover:bg-slate-700 hover:text-green-100"
+                      className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-left font-mono-code text-[10px] text-slate-700 shadow-xs transition-all hover:border-green-400 hover:bg-green-50/70 hover:text-green-800"
                     >
                       <Icon className={`h-3.5 w-3.5 shrink-0 ${action.color}`} />
                       <span className="truncate">{action.label}</span>
@@ -470,14 +470,14 @@ const AICopilot = () => {
                   <div
                     className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed ${
                       isUser
-                        ? 'ml-8 bg-emerald-950/80 text-emerald-50 border border-green-500/40'
-                        : 'border border-slate-700/80 bg-slate-950/90 text-slate-200 shadow-md'
+                        ? 'ml-8 bg-green-600 text-white font-medium shadow-xs'
+                        : 'border border-slate-200 bg-white text-slate-800 shadow-xs'
                     }`}
                   >
                     {!isUser && (
-                      <div className="mb-1.5 flex items-center justify-between border-b border-slate-800 pb-1 font-mono-code text-[9px] text-slate-400">
-                        <div className="flex items-center gap-1 font-bold text-green-400">
-                          <Sparkles className="h-3 w-3" /> AERO MISSION COPILOT
+                      <div className="mb-1.5 flex items-center justify-between border-b border-slate-100 pb-1 font-mono-code text-[9px] text-slate-400">
+                        <div className="flex items-center gap-1 font-bold text-green-700">
+                          <Sparkles className="h-3 w-3 text-green-600" /> AERO MISSION COPILOT
                         </div>
                         <span>{message.timestamp}</span>
                       </div>
@@ -487,8 +487,8 @@ const AICopilot = () => {
 
                     {/* Action Executed Badge */}
                     {message.action && (
-                      <div className="mt-2 flex items-center gap-1.5 rounded-md border border-green-500/40 bg-green-950/50 px-2 py-1 font-mono-code text-[10px] font-medium text-green-300">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-400 shrink-0" />
+                      <div className="mt-2 flex items-center gap-1.5 rounded-md border border-green-300 bg-green-50 px-2.5 py-1 font-mono-code text-[10px] font-semibold text-green-800">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
                         <span>ACTION EXECUTED: {message.action.description}</span>
                       </div>
                     )}
@@ -502,7 +502,7 @@ const AICopilot = () => {
                           key={i}
                           onClick={() => askAero(sug)}
                           disabled={isLoading}
-                          className="rounded-full border border-slate-700/60 bg-slate-800/60 px-2.5 py-0.5 font-mono-code text-[9px] text-slate-300 hover:border-green-400 hover:bg-slate-700 hover:text-green-200"
+                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-mono-code text-[9px] text-slate-600 shadow-xs hover:border-green-400 hover:bg-green-50 hover:text-green-800 transition-colors"
                         >
                           → {sug}
                         </button>
@@ -514,34 +514,34 @@ const AICopilot = () => {
             })}
 
             {isLoading && (
-              <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-slate-950/60 px-3 py-2 text-xs font-mono-code text-green-300">
-                <LoaderCircle className="h-4 w-4 animate-spin text-green-400" />
+              <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50/80 px-3 py-2 text-xs font-mono-code text-green-800">
+                <LoaderCircle className="h-4 w-4 animate-spin text-green-600" />
                 <span>Aero evaluating tactical directive...</span>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Command Input Form */}
+          {/* Command Input Form - Light Theme */}
           <form
             onSubmit={(event) => {
               event.preventDefault();
               askAero();
             }}
-            className="flex items-center gap-2 border-t border-slate-800 bg-slate-950 p-3"
+            className="flex items-center gap-2 border-t border-slate-200 bg-white p-3"
           >
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Ask telemetry, 'Fly to Delhi', 'Ironbow', 'Snapshot'..."
               aria-label="Ask Aero mission assistant"
-              className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-2 font-mono-code text-xs text-white placeholder-slate-500 outline-none transition-all focus:border-green-400 focus:ring-1 focus:ring-green-400"
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 font-mono-code text-xs text-slate-900 placeholder-slate-400 outline-none transition-all focus:bg-white focus:border-green-500 focus:ring-1 focus:ring-green-500"
             />
             <button
               type="submit"
               title="Send directive to Aero"
               disabled={isLoading || !query.trim()}
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-500 text-slate-950 shadow-md transition-all hover:bg-green-400 disabled:opacity-40 disabled:hover:bg-green-500"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-600 text-white shadow-xs transition-all hover:bg-green-500 disabled:opacity-40 disabled:hover:bg-green-600"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -549,16 +549,16 @@ const AICopilot = () => {
         </aside>
       )}
 
-      {/* Floating Tactical Orb Button */}
+      {/* Floating Tactical Orb Button - Light Theme */}
       <button
         onClick={() => setIsOpen((open) => !open)}
         title="Open Aero mission assistant"
-        className="fixed bottom-4 right-4 z-30 flex items-center gap-3 rounded-full border border-green-400/80 bg-slate-950 py-1.5 pl-1.5 pr-4 text-white shadow-xl shadow-green-950/50 transition-all hover:scale-105 hover:border-green-300 hover:shadow-green-500/20"
+        className="fixed bottom-4 right-4 z-30 flex items-center gap-3 rounded-full border border-green-300 bg-white/95 py-1.5 pl-1.5 pr-4 text-slate-900 shadow-xl shadow-slate-900/10 transition-all hover:scale-105 hover:border-green-400 hover:shadow-green-500/20 backdrop-blur-md"
       >
         <AeroOrb isOpen={isOpen} />
         <div className="text-left">
-          <div className="font-chakra text-sm font-bold tracking-wider text-green-100">AERO</div>
-          <div className="font-mono-code text-[8px] font-semibold text-green-400">AI COPILOT ACTIVE</div>
+          <div className="font-chakra text-sm font-bold tracking-wider text-green-800">AERO</div>
+          <div className="font-mono-code text-[8px] font-bold text-green-600">AI COPILOT ACTIVE</div>
         </div>
       </button>
     </>
