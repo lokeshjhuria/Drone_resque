@@ -14,6 +14,7 @@ import RescueWorkflowBar from './RescueWorkflowBar';
 import SensorSuitePanel from './SensorSuitePanel';
 import SystemArchitectureModal from './SystemArchitectureModal';
 import ReconVaultModal from './ReconVaultModal';
+import AICopilot from './AICopilot';
 
 const Dashboard = () => {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -107,6 +108,8 @@ const Dashboard = () => {
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
       />
+
+      <AICopilot />
 
       {/* Drone Hardware Link & Capture Card Bridge Modal */}
       <DroneConnectionModal

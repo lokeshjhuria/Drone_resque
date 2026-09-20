@@ -134,6 +134,20 @@ function createSessionToken(prefix = 'SAR-TK') {
   return `${prefix}-${id}`;
 }
 
+function getLocalAeroAnswer(messages) {
+  const question = [...messages].reverse().find((message) => message?.role === 'user')?.content?.toLowerCase() || '';
+  const answers = [
+    { terms: ['thermal', 'flir', 'heat', 'night'], answer: 'Use the FLIR feed to look for warm, persistent signatures. Compare every possible target with the RGB feed, then confirm its location on the tactical map before triage.' },
+    { terms: ['detection', 'triage', 'person', 'human', 'target'], answer: 'Review the confidence score and both camera feeds. Keep a confirmed human signature in AWAITING TRIAGE until the field team acknowledges the location and priority.' },
+    { terms: ['sos', 'emergency', 'rescue', 'medical'], answer: 'For an immediate threat to life, use EMERGENCY SOS in the top bar and contact local emergency services. Follow the rescue, hospital, and blood-bank response workflow shown by the dashboard.' },
+    { terms: ['drone', 'connect', 'connection', 'wifi', 'camera', 'link'], answer: 'Open CONNECT DRONE and verify the network, telemetry link, and camera stream separately. A camera stream may be unavailable even when the flight-control link is healthy.' },
+    { terms: ['recon', 'capture', 'image', 'evidence', 'vault'], answer: 'Capture useful frames from the live feeds and review them in RECON VAULT. Record time, coordinates, sensor source, and confidence before sharing evidence.' },
+    { terms: ['payload', 'drop', 'supply', 'release'], answer: 'Confirm the target coordinate, altitude, wind conditions, and release authorization before using payload controls. Keep the aircraft stable and verify the drop zone is clear.' }
+  ];
+  const match = answers.find((entry) => entry.terms.some((term) => question.includes(term)));
+  return match?.answer || 'I can answer AeroSAR mission questions about thermal search, detections, emergency response, drone connections, recon evidence, and payload safety. For broader questions, connect the optional answer service.';
+}
+
 export function createApiRouter() {
   const router = express.Router();
   router.use(cors());
@@ -148,6 +162,43 @@ export function createApiRouter() {
       return res.sendStatus(200);
     }
     next();
+  });
+
+  // AI answer proxy. The API key stays on the server and is never sent to the browser.
+  router.post('/ai/chat', async (req, res) => {
+    const { messages } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'At least one message is required.' });
+    }
+    const safeMessages = messages
+      .filter((message) => message && ['user', 'assistant'].includes(message.role) && typeof message.content === 'string')
+      .slice(-12)
+      .map((message) => ({ role: message.role, content: message.content.slice(0, 4000) }));
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.json({ answer: getLocalAeroAnswer(safeMessages), source: 'LOCAL_MISSION_GUIDANCE' });
+    }
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          temperature: 0.3,
+          max_tokens: 700,
+          messages: [
+            { role: 'system', content: 'You are Aero, the direct-answer assistant inside an AeroSAR search-and-rescue drone command dashboard. Answer general questions clearly and helpfully. For rescue operations, give concise practical guidance, but never claim to see live drone data or replace trained emergency services. When an immediate threat to life is described, tell the operator to use the dashboard Emergency SOS workflow and contact local emergency services. Do not invent telemetry, detections, locations, or mission facts.' },
+            ...safeMessages
+          ]
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ error: data.error?.message || 'The answer service request failed.' });
+      return res.json({ answer: data.choices?.[0]?.message?.content || 'Aero could not produce an answer.' });
+    } catch (error) {
+      return res.status(502).json({ error: `The answer service connection failed: ${error.message}` });
+    }
   });
 
   // ==========================================
