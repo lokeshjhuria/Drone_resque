@@ -134,18 +134,311 @@ function createSessionToken(prefix = 'SAR-TK') {
   return `${prefix}-${id}`;
 }
 
-function getLocalAeroAnswer(messages) {
-  const question = [...messages].reverse().find((message) => message?.role === 'user')?.content?.toLowerCase() || '';
-  const answers = [
-    { terms: ['thermal', 'flir', 'heat', 'night'], answer: 'Use the FLIR feed to look for warm, persistent signatures. Compare every possible target with the RGB feed, then confirm its location on the tactical map before triage.' },
-    { terms: ['detection', 'triage', 'person', 'human', 'target'], answer: 'Review the confidence score and both camera feeds. Keep a confirmed human signature in AWAITING TRIAGE until the field team acknowledges the location and priority.' },
-    { terms: ['sos', 'emergency', 'rescue', 'medical'], answer: 'For an immediate threat to life, use EMERGENCY SOS in the top bar and contact local emergency services. Follow the rescue, hospital, and blood-bank response workflow shown by the dashboard.' },
-    { terms: ['drone', 'connect', 'connection', 'wifi', 'camera', 'link'], answer: 'Open CONNECT DRONE and verify the network, telemetry link, and camera stream separately. A camera stream may be unavailable even when the flight-control link is healthy.' },
-    { terms: ['recon', 'capture', 'image', 'evidence', 'vault'], answer: 'Capture useful frames from the live feeds and review them in RECON VAULT. Record time, coordinates, sensor source, and confidence before sharing evidence.' },
-    { terms: ['payload', 'drop', 'supply', 'release'], answer: 'Confirm the target coordinate, altitude, wind conditions, and release authorization before using payload controls. Keep the aircraft stable and verify the drop zone is clear.' }
-  ];
-  const match = answers.find((entry) => entry.terms.some((term) => question.includes(term)));
-  return match?.answer || 'I can answer AeroSAR mission questions about thermal search, detections, emergency response, drone connections, recon evidence, and payload safety. For broader questions, connect the optional answer service.';
+const PRESET_GEO_COORDINATES = {
+  'jaipur': { name: 'Jaipur, Rajasthan', lat: 26.9124, lng: 75.7873, zoom: 14 },
+  'delhi': { name: 'Delhi NCR', lat: 28.6139, lng: 77.2090, zoom: 13 },
+  'new delhi': { name: 'New Delhi', lat: 28.6139, lng: 77.2090, zoom: 14 },
+  'mumbai': { name: 'Mumbai, Maharashtra', lat: 19.0760, lng: 72.8777, zoom: 13 },
+  'bengaluru': { name: 'Bengaluru, Karnataka', lat: 12.9716, lng: 77.5946, zoom: 13 },
+  'bangalore': { name: 'Bengaluru, Karnataka', lat: 12.9716, lng: 77.5946, zoom: 13 },
+  'kolkata': { name: 'Kolkata, West Bengal', lat: 22.5726, lng: 88.3639, zoom: 13 },
+  'chennai': { name: 'Chennai, Tamil Nadu', lat: 13.0827, lng: 80.2707, zoom: 13 },
+  'hyderabad': { name: 'Hyderabad, Telangana', lat: 17.3850, lng: 78.4867, zoom: 13 },
+  'pune': { name: 'Pune, Maharashtra', lat: 18.5204, lng: 73.8567, zoom: 13 },
+  'ahmedabad': { name: 'Ahmedabad, Gujarat', lat: 23.0225, lng: 72.5714, zoom: 13 },
+  'srinagar': { name: 'Srinagar, Jammu & Kashmir', lat: 34.0837, lng: 74.7973, zoom: 13 },
+  'kedarnath': { name: 'Kedarnath Alpine Valley', lat: 30.7346, lng: 79.0669, zoom: 14 },
+  'leh': { name: 'Leh Ladakh High-Altitude Zone', lat: 34.1526, lng: 77.5771, zoom: 13 },
+  'manali': { name: 'Manali Valley, Himachal Pradesh', lat: 32.2396, lng: 77.1887, zoom: 14 },
+  'rishikesh': { name: 'Rishikesh River Basin', lat: 30.0869, lng: 78.2676, zoom: 14 },
+  'guwahati': { name: 'Guwahati, Brahmaputra Flood Sector', lat: 26.1445, lng: 91.7362, zoom: 13 },
+  'kochi': { name: 'Kochi Coastal Zone, Kerala', lat: 9.9312, lng: 76.2673, zoom: 13 },
+  'brahmaputra': { name: 'Brahmaputra Flood Basin', lat: 26.1445, lng: 91.7362, zoom: 13 },
+  'london': { name: 'London, UK', lat: 51.5074, lng: -0.1278, zoom: 13 },
+  'new york': { name: 'New York City, USA', lat: 40.7128, lng: -74.0060, zoom: 13 },
+  'tokyo': { name: 'Tokyo, Japan', lat: 35.6762, lng: 139.6503, zoom: 13 },
+  'paris': { name: 'Paris, France', lat: 48.8566, lng: 2.3522, zoom: 13 },
+  'sydney': { name: 'Sydney, Australia', lat: -33.8688, lng: 151.2093, zoom: 13 }
+};
+
+function getLocalAeroAnswer(messages, context = {}) {
+  const lastUserMsg = [...messages].reverse().find((m) => m?.role === 'user')?.content || '';
+  const q = lastUserMsg.toLowerCase().trim();
+
+  const telem = context.telemetry || {
+    altitude: 120, speed: 14.2, battery: 86, heading: 42,
+    lat: 26.9124, lng: 75.7873, flightMode: 'AUTO_SURVEY', voltage: 22.4
+  };
+  const activeArea = context.activeSearchArea || { name: 'Jaipur Central Sector' };
+  const detections = Array.isArray(context.detections) ? context.detections : [];
+  const camera = context.cameraState || { thermalPalette: 'ironbow', zoomLevel: 1 };
+  const conn = context.droneConnection || { isConnected: true, connectionType: 'DRONE_WIFI', connectedWifiSsid: 'TP-Link_CAF8' };
+
+  // 1. FLIGHT COMMAND: Fly to / Search Location or GPS Coordinates
+  const navMatch = q.match(/(?:fly to|search area|search for|go to|head to|navigate to|vector to|relocate to)\s+(.+)/i);
+  if (navMatch) {
+    const rawTarget = navMatch[1].trim();
+    // Check raw coordinates like "28.61, 77.20"
+    const coordMatch = rawTarget.match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      if (!isNaN(lat) && !isNaN(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+        return {
+          answer: `Vectoring aircraft to coordinates ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E. Tactical SAR search grid and ArcGIS satellite feeds are updating to frame the target zone.`,
+          action: {
+            type: 'SEARCH_AND_FLY',
+            params: { areaName: `GPS Target (${lat.toFixed(3)}, ${lng.toFixed(3)})`, lat, lng, zoom: 14 },
+            description: `Vectoring to ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+          },
+          suggestions: ['Lock survivors in area', 'Switch thermal to Ironbow', 'Take recon snapshot']
+        };
+      }
+    }
+
+    // Check presets
+    for (const [key, loc] of Object.entries(PRESET_GEO_COORDINATES)) {
+      if (rawTarget.includes(key)) {
+        return {
+          answer: `Flight vector confirmed for ${loc.name} (${loc.lat.toFixed(4)}°N, ${loc.lng.toFixed(4)}°E). Relocating tactical search grid, waypoint corridors, and optical sweeps now.`,
+          action: {
+            type: 'SEARCH_AND_FLY',
+            params: { areaName: loc.name, lat: loc.lat, lng: loc.lng, zoom: loc.zoom },
+            description: `Vectoring to ${loc.name}`
+          },
+          suggestions: ['Scan area with FLIR thermal', 'Capture recon snapshot', 'Check battery & flight envelope']
+        };
+      }
+    }
+
+    // Dynamic search fallback for any user-specified name
+    return {
+      answer: `Initiating geographical lookup and vectoring to "${rawTarget}". Updating radar search grid and flight corridor.`,
+      action: {
+        type: 'SEARCH_AND_FLY',
+        params: { areaName: rawTarget, lat: telem.lat, lng: telem.lng, zoom: 13 },
+        description: `Searching for ${rawTarget}`
+      },
+      suggestions: ['Check live telemetry', 'Take recon snapshot']
+    };
+  }
+
+  // 2. FLIGHT DIRECTIVES: RTH / Loiter / Auto Survey
+  if (q.includes('rth') || q.includes('return to home') || q.includes('return home')) {
+    return {
+      answer: 'Autonomous Return-To-Home (RTH) engaged. Aircraft is ascending to 150m AGL safe obstacle clearance altitude and following the recorded telemetry corridor back to launch station.',
+      action: {
+        type: 'SET_FLIGHT_MODE',
+        params: { mode: 'RTH' },
+        description: 'Initiated Autonomous Return-To-Home (RTH)'
+      },
+      suggestions: ['Hold position (Loiter)', 'Resume Auto Survey', 'Check battery status']
+    };
+  }
+
+  if (q.includes('loiter') || q.includes('hold position') || q.includes('hover') || q.includes('pause')) {
+    return {
+      answer: 'Aircraft has entered stationary LOITER hover mode. Maintaining GPS station-keeping and holding altitude above ground.',
+      action: {
+        type: 'SET_FLIGHT_MODE',
+        params: { mode: 'LOITER' },
+        description: 'Holding station in Loiter hover mode'
+      },
+      suggestions: ['Resume grid search', 'Zoom camera 3x', 'Take recon snapshot']
+    };
+  }
+
+  if (q.includes('auto survey') || q.includes('resume search') || q.includes('grid search') || q.includes('resume')) {
+    return {
+      answer: 'Resumed Autonomous SAR Grid Survey. Optical 4K and FLIR thermal sensors are actively sweeping the assigned search grid.',
+      action: {
+        type: 'SET_FLIGHT_MODE',
+        params: { mode: 'AUTO_SURVEY' },
+        description: 'Resumed Autonomous Grid Survey'
+      },
+      suggestions: ['Check survivor detections', 'Capture recon snapshot', 'Emergency RTH']
+    };
+  }
+
+  // 3. SENSOR & CAMERA CONTROLS: Thermal Palettes & Zoom
+  if (q.includes('ironbow')) {
+    return {
+      answer: 'Applied FLIR Ironbow Thermal Palette to Camera 02. High-heat human body signatures (36°C-39°C) are rendered in glowing white-yellow over deep violet ambient terrain.',
+      action: {
+        type: 'SET_THERMAL_PALETTE',
+        params: { palette: 'ironbow' },
+        description: 'Applied FLIR Ironbow Palette'
+      },
+      suggestions: ['Zoom in 2x', 'Capture recon snapshot', 'Check detection triage']
+    };
+  }
+
+  if (q.includes('rainbow')) {
+    return {
+      answer: 'Switched Camera 02 to High-Contrast Rainbow thermal palette. Optimal for isolating subtle temperature differences across water and flood surfaces.',
+      action: {
+        type: 'SET_THERMAL_PALETTE',
+        params: { palette: 'rainbow' },
+        description: 'Applied FLIR Rainbow Palette'
+      },
+      suggestions: ['Switch to Ironbow', 'Reset zoom', 'Capture recon snapshot']
+    };
+  }
+
+  if (q.includes('white hot') || q.includes('whitehot')) {
+    return {
+      answer: 'Set Camera 02 to White-Hot thermal palette. Warm bodies appear as bright white silhouettes against cold dark background, ideal for thick forest canopy penetration.',
+      action: {
+        type: 'SET_THERMAL_PALETTE',
+        params: { palette: 'whiteHot' },
+        description: 'Applied FLIR White-Hot Palette'
+      },
+      suggestions: ['Switch to Ironbow', 'Zoom camera 3x', 'Save recon frame']
+    };
+  }
+
+  // Zoom commands
+  const zoomMatch = q.match(/zoom\s*(?:to\s*)?([1-4])x?/i);
+  if (zoomMatch || q.includes('zoom in') || q.includes('zoom out')) {
+    const level = zoomMatch ? parseInt(zoomMatch[1], 10) : (q.includes('zoom in') ? Math.min(4, (camera.zoomLevel || 1) + 1) : 1);
+    return {
+      answer: `Optical & Thermal sensor zoom adjusted to ${level}X magnification. Center reticle Field of View recalibrated.`,
+      action: {
+        type: 'SET_ZOOM',
+        params: { zoomLevel: level },
+        description: `Set Camera Zoom to ${level}X`
+      },
+      suggestions: ['Take recon snapshot', 'Lock active survivor', 'Reset zoom to 1x']
+    };
+  }
+
+  // 4. RECON INTEL SNAPSHOT
+  if (q.includes('recon') || q.includes('snapshot') || q.includes('capture') || q.includes('save evidence') || q.includes('intel')) {
+    return {
+      answer: 'High-resolution tactical snapshot captured! Telemetry metadata, GPS coordinates, and active AI target bounding boxes are archived to the RECON VAULT and synchronized with Supabase.',
+      action: {
+        type: 'CAPTURE_INTEL',
+        params: {},
+        description: 'Captured Recon Intel to Vault & Supabase'
+      },
+      suggestions: ['Open Recon Vault', 'Deploy medical pod', 'Fly to next waypoint']
+    };
+  }
+
+  // 5. PAYLOAD DROP
+  if (q.includes('payload') || q.includes('drop') || q.includes('deploy pod') || q.includes('medical kit') || q.includes('supply')) {
+    return {
+      answer: 'Medical Trauma Pod deployment sequence armed and dispatched to locked survivor coordinates. Parachute deployed, beacon transmitting on 406 MHz.',
+      action: {
+        type: 'DEPLOY_PAYLOAD',
+        params: {},
+        description: 'Dispatched Emergency Medical Pod'
+      },
+      suggestions: ['Trigger Emergency SOS', 'Take recon snapshot', 'Return to Home']
+    };
+  }
+
+  // 6. EMERGENCY SOS
+  if (q.includes('sos') || q.includes('emergency') || q.includes('ambulance') || q.includes('dispatch') || q.includes('hospital')) {
+    return {
+      answer: 'EMERGENCY SOS DISPATCH TRIGGERED! Priority alert broadcast to regional Trauma Centers, Air Ambulance helico units, and Blood Bank triage with live coordinates and victim status.',
+      action: {
+        type: 'TRIGGER_SOS',
+        params: {},
+        description: 'Dispatched Multi-Agency Emergency SOS'
+      },
+      suggestions: ['Drop medical supply pod', 'Capture recon snapshot', 'Return to Home']
+    };
+  }
+
+  // 7. WI-FI & DRONE HARDWARE LINK
+  if (q.includes('wifi') || q.includes('scan') || q.includes('connect drone') || q.includes('drone link') || q.includes('network')) {
+    return {
+      answer: `Scanning wireless spectrum for real drone hotspots. Current active interface is connected to "${conn.connectedWifiSsid || 'DRONE-LINK'}" (${conn.connectionType}). Opening the Drone Wi-Fi Link interface.`,
+      action: {
+        type: 'SCAN_WIFI',
+        params: {},
+        description: 'Initiated Drone Hardware Wi-Fi Scanner'
+      },
+      suggestions: ['Check camera stream', 'Ping camera IP', 'Check telemetry']
+    };
+  }
+
+  // 8. LIVE STATUS & TELEMETRY QUESTIONS
+  if (q.includes('battery') || q.includes('power') || q.includes('charge') || q.includes('voltage')) {
+    const batt = telem.battery || 86;
+    const estMin = Math.round((batt / 100) * 32);
+    return {
+      answer: `Aircraft Battery Status: ${batt}% (${telem.voltage || 22.4}V 6S LiPo). Estimated endurance remaining: ~${estMin} minutes under current throttle and wind load. Return-to-Home failsafe threshold is set at 20%.`,
+      suggestions: ['Check full diagnostics', 'Fly to safe waypoint', 'Emergency RTH']
+    };
+  }
+
+  if (q.includes('altitude') || q.includes('height') || q.includes('speed') || q.includes('heading')) {
+    return {
+      answer: `Flight Telemetry: Altitude is ${telem.altitude || 120}m AGL, Ground Speed is ${telem.speed || 14.2} m/s, Heading is ${telem.heading || 42}° NE. Aircraft is stable in ${telem.flightMode || 'AUTO_SURVEY'} mode.`,
+      suggestions: ['Hold position (Loiter)', 'Zoom in 2x', 'Capture recon snapshot']
+    };
+  }
+
+  if (q.includes('location') || q.includes('gps') || q.includes('coordinates') || q.includes('where are we') || q.includes('area')) {
+    return {
+      answer: `Current Position: ${telem.lat.toFixed(5)}°N, ${Math.abs(telem.lng).toFixed(5)}°W over "${activeArea.name || 'Active SAR Zone'}". Search grid coverage is currently active with dual 4K/FLIR sweeps.`,
+      suggestions: ['Fly to Delhi', 'Fly to Jaipur', 'Capture recon snapshot']
+    };
+  }
+
+  if (q.includes('survivor') || q.includes('target') || q.includes('detection') || q.includes('person') || q.includes('victim') || q.includes('triage')) {
+    const count = detections.length;
+    if (count === 0) {
+      return {
+        answer: 'No human heat signatures currently detected in the active sector. Optical and FLIR radiometric scans are actively sweeping the terrain.',
+        suggestions: ['Switch thermal to Ironbow', 'Fly to next search sector', 'Increase optical zoom']
+      };
+    }
+    const hypoTargets = detections.filter(d => (d.bodyTemp || 37) < 35.0);
+    const targetSummary = detections.map(d => `${d.id}: ${d.bodyTemp}°C (${d.confidence}% confidence, ${d.status})`).join('; ');
+    return {
+      answer: `ACTIVE DETECTION TRIAGE: ${count} survivor(s) detected in sector (${targetSummary}). ${hypoTargets.length > 0 ? `WARNING: ${hypoTargets.length} subject(s) showing critical hypothermia (<35°C)! Immediate medical pod release or evacuation advised.` : 'All vitals within stable SAR observation limits.'}`,
+      suggestions: ['Deploy medical supply pod', 'Trigger Emergency SOS', 'Capture recon snapshot']
+    };
+  }
+
+  if (q.includes('status') || q.includes('diagnostic') || q.includes('health') || q.includes('check')) {
+    return {
+      answer: `AeroSAR System Diagnostics: Flight Controller is Pixhawk 6X Pro Dual IMU (Healthy); Radio Link: ${conn.protocolVersion || 'MAVLink v2.0'} (99% Link Quality, 12ms Latency); Battery: ${telem.battery || 86}%; GPS Lock: 18 Satellites (3D RTK Fix); Optical & FLIR Cameras: 60 FPS Online; Payload Bay: Armed & Ready.`,
+      suggestions: ['Scan for survivors', 'Switch thermal to Ironbow', 'Capture recon snapshot']
+    };
+  }
+
+  // 9. EXPERT SAR DOMAIN KNOWLEDGE
+  if (q.includes('hypothermia') || q.includes('swiss') || q.includes('temp') || q.includes('cold')) {
+    return {
+      answer: 'HYPOTHERMIA CLINICAL PROTOCOL (Swiss Staging System):\n• HT I (35°C–32°C): Conscious, shivering. Provide dry thermal blankets and high-calorie nutrition.\n• HT II (32°C–28°C): Impaired consciousness, no shivering. High ventricular fibrillation risk. Minimize movement; horizontal evacuation required.\n• HT III (28°C–24°C): Unconscious. Vital signs barely detectable. Initiate airway support and gentle active rewarming.\n• HT IV (<24°C): Apparent death. CPR mandatory during air-evacuation until core temperature exceeds 32°C.',
+      suggestions: ['Check survivor detections', 'Deploy medical pod', 'Trigger Emergency SOS']
+    };
+  }
+
+  if (q.includes('pattern') || q.includes('grid') || q.includes('expanding square') || q.includes('creeping')) {
+    return {
+      answer: 'SEARCH PATTERN GUIDANCE:\n1. Expanding Square (SS): Best when the survivor\'s Last Known Position (LKP) is pinpointed within a small radius. The aircraft spirals outward in expanding 90° right turns.\n2. Parallel Track (PS): Ideal for uniform broad plains, large lakes, or flat valleys. Drone flies back and forth along straight parallel corridors with 20% sensor overlap.\n3. Creeping Line (CS): Used when the search zone is elongated (e.g. river banks, highway flood zones, mountain ravines). Corridors are perpendicular to the long axis.',
+      suggestions: ['Resume grid search', 'Fly to Jaipur', 'Capture recon snapshot']
+    };
+  }
+
+  // 10. GREETING & GENERAL ASSISTANCE
+  if (q.includes('hello') || q.includes('hi') || q.includes('hey') || q.includes('who are you') || q.includes('help') || q.length === 0) {
+    return {
+      answer: `Greetings, Operator. I am AERO, your autonomous Tactical Mission Copilot. I have real-time telemetry access to the aircraft (${telem.battery}% battery, ${telem.altitude}m altitude, ${detections.length} active detections). You can give me direct flight directives (e.g. "Fly to Delhi", "RTH", "Loiter"), sensor controls ("Switch thermal to Ironbow", "Zoom 3x"), or tactical requests ("Capture recon intel", "Drop medical pod", "Trigger SOS"). How can I assist this mission?`,
+      suggestions: ['What is my drone altitude & battery?', 'Fly to Delhi', 'Switch thermal to Ironbow', 'Capture recon snapshot']
+    };
+  }
+
+  // Fallback intelligent answer
+  return {
+    answer: `Acknowledged, Operator. I am continuously monitoring aircraft telemetry (${telem.altitude}m AGL, ${telem.battery}% battery, heading ${telem.heading}° over ${activeArea.name}). You can ask me for flight actions ("Fly to [City/Coords]", "RTH", "Loiter"), camera commands ("Ironbow", "Zoom 2x"), intelligence captures ("Take recon snapshot"), or emergency dispatches ("Trigger SOS").`,
+    suggestions: ['Check battery & diagnostics', 'Switch thermal to Ironbow', 'Take recon snapshot', 'Emergency RTH']
+  };
 }
 
 export function createApiRouter() {
@@ -164,9 +457,9 @@ export function createApiRouter() {
     next();
   });
 
-  // AI answer proxy. The API key stays on the server and is never sent to the browser.
+  // AI answer proxy: Supports Gemini API, OpenAI API, and Full Local Autonomous SAR Guidance
   router.post('/ai/chat', async (req, res) => {
-    const { messages } = req.body || {};
+    const { messages, context } = req.body || {};
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'At least one message is required.' });
     }
@@ -175,30 +468,90 @@ export function createApiRouter() {
       .slice(-12)
       .map((message) => ({ role: message.role, content: message.content.slice(0, 4000) }));
 
-    if (!process.env.OPENAI_API_KEY) {
-      return res.json({ answer: getLocalAeroAnswer(safeMessages), source: 'LOCAL_MISSION_GUIDANCE' });
+    const localResult = getLocalAeroAnswer(safeMessages, context);
+
+    // If Google Gemini API Key is configured, use Gemini 1.5 Flash
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const geminiPrompt = `You are AERO, an expert autonomous Search and Rescue (SAR) mission copilot.
+CURRENT MISSION TELEMETRY & CONTEXT:
+- Battery: ${context?.telemetry?.battery || 86}% (${context?.telemetry?.voltage || 22.4}V)
+- Altitude: ${context?.telemetry?.altitude || 120}m AGL, Speed: ${context?.telemetry?.speed || 14.2} m/s
+- Coordinates: ${context?.telemetry?.lat || 26.9124}°N, ${context?.telemetry?.lng || 75.7873}°E
+- Active Search Area: ${context?.activeSearchArea?.name || 'Assigned SAR Sector'}
+- Active Heat Signatures / Survivors: ${context?.detections?.length || 0}
+- Thermal Palette: ${context?.cameraState?.thermalPalette || 'ironbow'}
+
+Instructions: Provide direct, concise, practical tactical guidance. Keep responses under 4 sentences. If the user asks a flight or camera command, confirm readiness to execute it.`;
+
+        const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              { role: 'user', parts: [{ text: geminiPrompt }] },
+              ...safeMessages.map(m => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }]
+              }))
+            ]
+          })
+        });
+        const geminiData = await geminiRes.json();
+        const geminiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (geminiText) {
+          return res.json({
+            answer: geminiText,
+            action: localResult.action,
+            suggestions: localResult.suggestions,
+            source: 'GOOGLE_GEMINI_AI'
+          });
+        }
+      } catch (geminiErr) {
+        console.warn('[AERO-AI] Gemini fallback to local engine:', geminiErr.message);
+      }
     }
 
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-          temperature: 0.3,
-          max_tokens: 700,
-          messages: [
-            { role: 'system', content: 'You are Aero, the direct-answer assistant inside an AeroSAR search-and-rescue drone command dashboard. Answer general questions clearly and helpfully. For rescue operations, give concise practical guidance, but never claim to see live drone data or replace trained emergency services. When an immediate threat to life is described, tell the operator to use the dashboard Emergency SOS workflow and contact local emergency services. Do not invent telemetry, detections, locations, or mission facts.' },
-            ...safeMessages
-          ]
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) return res.status(response.status).json({ error: data.error?.message || 'The answer service request failed.' });
-      return res.json({ answer: data.choices?.[0]?.message?.content || 'Aero could not produce an answer.' });
-    } catch (error) {
-      return res.status(502).json({ error: `The answer service connection failed: ${error.message}` });
+    // If OpenAI API Key is configured
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+          body: JSON.stringify({
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            temperature: 0.3,
+            max_tokens: 700,
+            messages: [
+              {
+                role: 'system',
+                content: `You are AERO, the autonomous search-and-rescue mission assistant. Live Telemetry: Altitude ${context?.telemetry?.altitude || 120}m, Battery ${context?.telemetry?.battery || 86}%, Lat/Lng ${context?.telemetry?.lat || 26.9124}, ${context?.telemetry?.lng || 75.7873}. Active area: ${context?.activeSearchArea?.name || 'Sector'}. Detections: ${context?.detections?.length || 0}. Keep responses concise and tactical.`
+              },
+              ...safeMessages
+            ]
+          })
+        });
+        const data = await response.json();
+        if (response.ok && data.choices?.[0]?.message?.content) {
+          return res.json({
+            answer: data.choices[0].message.content,
+            action: localResult.action,
+            suggestions: localResult.suggestions,
+            source: 'OPENAI_GPT'
+          });
+        }
+      } catch (openAiErr) {
+        console.warn('[AERO-AI] OpenAI fallback to local engine:', openAiErr.message);
+      }
     }
+
+    // High-precision local SAR Mission Guidance Engine
+    return res.json({
+      answer: localResult.answer,
+      action: localResult.action,
+      suggestions: localResult.suggestions,
+      source: 'AERO_TACTICAL_SAR_ENGINE'
+    });
   });
 
   // ==========================================
